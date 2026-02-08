@@ -1,0 +1,26 @@
+{
+  "run_id": "2026-02-04-seed01",
+  "source": "founder-pm",
+  "input_type": "PRD",
+  "input_ref": "auth-service-prd.md",
+  "timestamp": "2026-02-04T09:00:00+00:00",
+  "duration_minutes": 28,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "build",
+    "audit",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 38,
+  "tests_failed": 2,
+  "lint_errors": 3,
+  "type_errors": 0,
+  "diff_size_lines": 340,
+  "files_created": 8,
+  "files_modified": 2,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "First auth service build. Clean run."
+}

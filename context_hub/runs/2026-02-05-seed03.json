@@ -1,0 +1,26 @@
+{
+  "run_id": "2026-02-05-seed03",
+  "source": "founder-pm",
+  "input_type": "PRD",
+  "input_ref": "payment-gateway-prd.md",
+  "timestamp": "2026-02-05T10:15:00+00:00",
+  "duration_minutes": 33,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "build",
+    "audit",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 47,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 420,
+  "files_created": 6,
+  "files_modified": 1,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "Clean build. Good PRD structure."
+}

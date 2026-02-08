@@ -1,0 +1,27 @@
+{
+  "run_id": "2026-02-04-seed02",
+  "source": "founder-pm",
+  "input_type": "FEATURE",
+  "input_ref": "add-mfa-support",
+  "timestamp": "2026-02-04T14:30:00+00:00",
+  "duration_minutes": 45,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "build",
+    "audit",
+    "debug",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 52,
+  "tests_failed": 0,
+  "lint_errors": 1,
+  "type_errors": 0,
+  "diff_size_lines": 580,
+  "files_created": 4,
+  "files_modified": 6,
+  "manual_intervention": true,
+  "manual_intervention_reason": "PRD ambiguity on TOTP vs SMS fallback",
+  "notes": "Required debug cycle. PRD clarity issue."
+}

@@ -1,0 +1,26 @@
+{
+  "run_id": "2026-02-05-seed04",
+  "source": "founder-pm",
+  "input_type": "BUGFIX",
+  "input_ref": "fix-session-timeout-bug",
+  "timestamp": "2026-02-05T16:00:00+00:00",
+  "duration_minutes": 18,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "build",
+    "debug",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 12,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 45,
+  "files_created": 0,
+  "files_modified": 3,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "Small targeted fix. Fast cycle."
+}
