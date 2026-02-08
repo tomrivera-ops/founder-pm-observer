@@ -1,0 +1,5 @@
+# PM Checkpoint Log
+# Format: timestamp|checkpoint-name|event|tag|sha|task-file
+
+2026-02-08T23:28:09.171699|unnamed|CHECKPOINT|checkpoint/pre-unnamed-20260208-232809|31157e7a|
+2026-02-08T23:28:09.171699|unnamed|COMPLETE|complete/unnamed-20260208-233323|31157e7a|
