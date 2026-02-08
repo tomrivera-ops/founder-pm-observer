@@ -1,6 +1,6 @@
 # Founder-PM Observer Plane
 
-**Advisory Optimization System — Phase 1: Measure**
+**Advisory Optimization System — Phase 2: Analyze**
 
 The Observer Plane is a parallel advisory system that watches Founder-PM executions, records outcome metrics, and (in later phases) produces optimization recommendations.
 
@@ -40,9 +40,13 @@ founder-pm-observer/             # Sibling to founder-pm/ — never inside it
 │   ├── __init__.py
 │   ├── schema.py                # Run record contract + validation
 │   ├── context_hub.py           # Storage layer (append-only)
-│   └── metrics.py               # Aggregation + trends
+│   ├── metrics.py               # Aggregation + trends
+│   ├── analysis_agent.py        # Analysis agent (Phase 2)
+│   ├── analysis_config.py       # Agent configuration
+│   └── monitoring.py            # Agent performance monitoring
 ├── tests/
-│   └── test_phase1.py           # 33 tests
+│   ├── test_phase1.py           # 33 tests (Phase 1)
+│   └── test_analysis_agent.py   # Analysis agent tests (Phase 2)
 ├── context_hub/
 │   ├── runs/                    # Immutable run records (JSON)
 │   ├── metrics/                 # Aggregated snapshots
@@ -85,7 +89,12 @@ python bin/observe.py record-fast \
   --tests-passed 30 \
   --diff 200
 
-# 8. Export all runs as JSON
+# 8. Run analysis agent (Phase 2)
+python bin/observe.py analyze
+python bin/observe.py analyze --print          # print report to stdout
+python bin/observe.py analyze --window 20      # custom window size
+
+# 9. Export all runs as JSON
 python bin/observe.py export
 ```
 
@@ -196,6 +205,43 @@ The sole coupling point between Founder-PM and the Observer Plane:
 
 ---
 
+## Analysis Agent (Phase 2)
+
+The analysis agent is a read-only agent that examines run history from the Context Hub, computes metrics, compares against configured targets, and produces markdown reports.
+
+### How It Works
+
+1. Loads the most recent runs from the Context Hub (window size configurable)
+2. Splits runs into current and previous windows for trend comparison
+3. Computes aggregated metrics (success rate, cycle time, hygiene, etc.)
+4. Compares metrics against targets from the parameter config
+5. Generates findings classified by severity: critical, warning, info
+6. Writes a markdown report to `context_hub/analysis/`
+7. Logs performance to `context_hub/metrics/agent_runs.jsonl`
+
+### Configuration
+
+The agent reads targets from `context_hub/parameters/`. Key settings:
+
+| Parameter | Default | Source |
+|-----------|---------|--------|
+| `analysis_window_size` | 10 | `observer.analysis_window_size` |
+| `trend_threshold` | 0.1 | `observer.trend_threshold` |
+| `target_build_success_rate` | 0.9 | `targets.build_success_rate` |
+| `target_median_cycle_time` | 30m | `targets.median_cycle_time_minutes` |
+| `target_manual_intervention_rate` | 0.1 | `targets.manual_intervention_rate` |
+| `target_max_lint_errors` | 5 | `targets.max_lint_errors_per_run` |
+| `target_max_type_errors` | 0 | `targets.max_type_errors_per_run` |
+
+### Design Principles
+
+- **Read-only**: never modifies run records or parameters
+- **Deterministic**: same input produces same output (no LLM calls)
+- **Observable**: every run is logged with timing and outcome
+- **Safe**: failures are caught and logged, never block execution
+
+---
+
 ## Running Tests
 
 ```bash
@@ -204,7 +250,7 @@ cd founder-pm-observer
 pytest tests/ -v
 ```
 
-33 tests covering: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, and trend computation.
+Tests cover: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, trend computation, analysis agent execution, finding generation, report format, and agent monitoring.
 
 ---
 
@@ -213,7 +259,7 @@ pytest tests/ -v
 | Phase | Status | Scope |
 |-------|--------|-------|
 | **1 — Measure** | Complete | Context Hub, schema, CLI, metrics, bridge |
-| **2 — Analyze** | Next | Read-only analysis agent, markdown reports |
+| **2 — Analyze** | Complete | Read-only analysis agent, markdown reports, monitoring |
 | **3 — Suggest** | Planned | Parameter proposals, approval gate |
 | **4 — Automate** | Future | Confidence-gated auto-apply, rollback |
 

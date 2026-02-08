@@ -8,11 +8,9 @@ Usage:
   observe list         List recent runs
   observe show <id>    Show a specific run
   observe metrics      Show aggregated metrics
+  observe analyze      Run analysis agent and generate report
   observe export       Export all runs as JSON array
   observe init         Initialize Context Hub (idempotent)
-
-This is a Phase 1 tool: manual/CLI-assisted capture only.
-No automation, no analysis, no writeback.
 """
 
 import argparse
@@ -36,6 +34,8 @@ from lib.schema import (
 )
 from lib.context_hub import ContextHub, RecordExistsError, ValidationError
 from lib.metrics import compute_metrics
+from lib.analysis_agent import AnalysisAgent
+from lib.analysis_config import AnalysisConfig
 
 # Default Context Hub location (overridable via OBSERVER_HUB_PATH env var)
 DEFAULT_HUB_PATH = PROJECT_ROOT / "context_hub"
@@ -268,6 +268,40 @@ def cmd_export(args):
     print(json.dumps(output, indent=2))
 
 
+def cmd_analyze(args):
+    """Run the analysis agent and generate a report."""
+    hub = get_hub()
+
+    if hub.run_count() == 0:
+        print("No runs recorded yet. Nothing to analyze.")
+        return
+
+    # Load config from parameter store
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+
+    if args.window:
+        config.analysis_window_size = args.window
+
+    agent = AnalysisAgent(hub, config)
+    print(f"Running analysis agent (window={config.analysis_window_size})...")
+
+    result = agent.run()
+
+    if not result.success:
+        print(f"Analysis failed: {result.error}")
+        sys.exit(1)
+
+    print(f"\nAnalysis complete in {result.duration_seconds:.2f}s")
+    print(f"  Runs analyzed: {result.runs_analyzed}")
+    print(f"  Findings:      {result.findings_count}")
+    print(f"  Report:        context_hub/analysis/{result.report_filename}")
+
+    if args.print_report:
+        print(f"\n{'=' * 60}")
+        print(result.report_content)
+
+
 # --- Helpers ---
 
 
@@ -395,6 +429,16 @@ def main():
     # export
     subparsers.add_parser("export", help="Export all runs as JSON")
 
+    # analyze
+    analyze = subparsers.add_parser("analyze", help="Run analysis agent")
+    analyze.add_argument(
+        "--window", type=int, help="Override analysis window size"
+    )
+    analyze.add_argument(
+        "--print", dest="print_report", action="store_true",
+        help="Print report to stdout",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -408,6 +452,7 @@ def main():
         "list": cmd_list,
         "show": cmd_show,
         "metrics": cmd_metrics,
+        "analyze": cmd_analyze,
         "export": cmd_export,
     }
 
