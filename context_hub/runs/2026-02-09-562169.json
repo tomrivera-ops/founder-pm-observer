@@ -1,0 +1,24 @@
+{
+  "run_id": "2026-02-09-562169",
+  "source": "founder-pm",
+  "input_type": "FEATURE",
+  "input_ref": "CHAP AI responses, per-jurisdiction tax calc, jurisdictions page, search palette",
+  "timestamp": "2026-02-09T12:32:17.896275+00:00",
+  "duration_minutes": 18.0,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "build",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 0,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 791,
+  "files_created": 2,
+  "files_modified": 9,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "Phase 2 PSE fixes: CHAP AI greeting/help/penalty/jurisdiction responses + New Chat button, TaxCalculator per-jurisdiction breakdowns (CA/NY/TX/WA/FL), JurisdictionsPage replacing Coming Soon, SearchModal command palette with Cmd+K | status:complete | build:all 8 pkg + 2 apps pass"
+}
