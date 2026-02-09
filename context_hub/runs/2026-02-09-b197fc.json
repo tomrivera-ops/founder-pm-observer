@@ -1,0 +1,29 @@
+{
+  "run_id": "2026-02-09-b197fc",
+  "source": "founder-pm",
+  "input_type": "REFACTOR",
+  "input_ref": "PSE Icon Audit & Standardization",
+  "timestamp": "2026-02-09T01:10:35.110843+00:00",
+  "duration_minutes": 20.0,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "audit",
+    "build",
+    "code_review",
+    "validation",
+    "cursor_audit",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 126,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 2117,
+  "files_created": 7,
+  "files_modified": 22,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "PSE icon audit + standardization | status:complete | code_review:0crit/0maj/0min | arch_audit:WARN(rate-limit) | [source-artifact:20260208-195117-c4f189]"
+}
