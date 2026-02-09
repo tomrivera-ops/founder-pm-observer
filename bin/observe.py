@@ -34,8 +34,15 @@ from lib.schema import (
 )
 from lib.context_hub import ContextHub, RecordExistsError, ValidationError
 from lib.metrics import compute_metrics
-from lib.analysis_agent import AnalysisAgent
+from lib.analysis_agent import AnalysisAgent, Finding, Severity
 from lib.analysis_config import AnalysisConfig
+from lib.proposal_engine import (
+    ProposalEngine,
+    PendingProposalExists,
+    NoProposalFound,
+    ProposalNotPending,
+)
+from lib.proposal_schema import ProposalStatus
 
 # Default Context Hub location (overridable via OBSERVER_HUB_PATH env var)
 DEFAULT_HUB_PATH = PROJECT_ROOT / "context_hub"
@@ -302,6 +309,151 @@ def cmd_analyze(args):
         print(result.report_content)
 
 
+def cmd_propose(args):
+    """Run analysis and generate a parameter change proposal."""
+    hub = get_hub()
+
+    if hub.run_count() == 0:
+        print("No runs recorded yet. Nothing to analyze.")
+        return
+
+    # Load config
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+
+    if args.window:
+        config.analysis_window_size = args.window
+
+    # Run analysis first
+    agent = AnalysisAgent(hub, config)
+    print(f"Running analysis (window={config.analysis_window_size})...")
+    result = agent.run()
+
+    if not result.success:
+        print(f"Analysis failed: {result.error}")
+        sys.exit(1)
+
+    if result.findings_count == 0:
+        print("No findings — all metrics within targets. No proposal needed.")
+        return
+
+    # Extract findings from report (re-run analysis internals)
+    # We need the actual Finding objects, so run the agent's _analyze method
+    window = config.analysis_window_size
+    runs = hub.list_runs(limit=window * 2, newest_first=True)
+    current_runs = runs[:window]
+    previous_runs = runs[window:]
+
+    from lib.metrics import compute_metrics, compute_trends
+    current_metrics = compute_metrics(current_runs)
+    previous_metrics = compute_metrics(previous_runs)
+    metrics_with_trends = compute_trends(
+        current_metrics, previous_metrics, config.trend_threshold
+    )
+    findings = agent._analyze(current_runs, metrics_with_trends, previous_metrics)
+
+    # Generate proposal
+    engine = ProposalEngine(hub, config)
+    try:
+        proposal = engine.generate_proposal(
+            findings=findings,
+            source_report=result.report_filename,
+        )
+    except PendingProposalExists as e:
+        print(f"\n{e}")
+        print("Use 'observe approve <id>' or 'observe reject <id>' first.")
+        sys.exit(1)
+
+    if proposal is None:
+        print("No rules matched — no parameter changes proposed.")
+        return
+
+    print(f"\nProposal generated: {proposal.proposal_id}")
+    print(f"  Impact:  {proposal.impact_level}")
+    print(f"  Version: {proposal.version_from} -> {proposal.version_to}")
+    print(f"  Changes: {proposal.diff_count}")
+    for diff in proposal.parameter_diffs:
+        print(f"    {diff.path}: {diff.old_value} -> {diff.new_value}")
+        if diff.reason:
+            print(f"      reason: {diff.reason}")
+    print(f"\nTo approve: observe approve {proposal.proposal_id}")
+    print(f"To reject:  observe reject {proposal.proposal_id} --reason '...'")
+
+
+def cmd_approve(args):
+    """Approve a pending proposal and apply parameter changes."""
+    hub = get_hub()
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+    engine = ProposalEngine(hub, config)
+
+    try:
+        proposal = engine.approve_proposal(
+            args.proposal_id,
+            approved_by=args.by or "operator",
+        )
+    except NoProposalFound as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except ProposalNotPending as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    print(f"Proposal {proposal.proposal_id} APPROVED")
+    print(f"  New parameter version: {proposal.version_to}")
+    print(f"  Changes applied: {proposal.diff_count}")
+    for diff in proposal.parameter_diffs:
+        print(f"    {diff.path}: {diff.old_value} -> {diff.new_value}")
+
+
+def cmd_reject(args):
+    """Reject a pending proposal."""
+    hub = get_hub()
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+    engine = ProposalEngine(hub, config)
+
+    try:
+        proposal = engine.reject_proposal(
+            args.proposal_id,
+            reason=args.reason or "",
+            rejected_by=args.by or "operator",
+        )
+    except NoProposalFound as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except ProposalNotPending as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    print(f"Proposal {proposal.proposal_id} REJECTED")
+    if proposal.rejection_reason:
+        print(f"  Reason: {proposal.rejection_reason}")
+
+
+def cmd_proposals(args):
+    """List all proposals."""
+    hub = get_hub()
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+    engine = ProposalEngine(hub, config)
+
+    proposals = engine.list_all_proposals()
+    if not proposals:
+        print("No proposals found.")
+        return
+
+    print(f"{'PROPOSAL ID':<36} {'STATUS':<10} {'IMPACT':<8} {'CHANGES':<8} {'VERSION'}")
+    print("-" * 85)
+    for p in proposals:
+        version = f"{p.version_from} -> {p.version_to}"
+        print(f"{p.proposal_id:<36} {p.status:<10} {p.impact_level:<8} {p.diff_count:<8} {version}")
+
+    pending = [p for p in proposals if p.is_pending]
+    if pending:
+        print(f"\n{len(pending)} pending proposal(s)")
+
+
 # --- Helpers ---
 
 
@@ -439,6 +591,26 @@ def main():
         help="Print report to stdout",
     )
 
+    # propose
+    propose = subparsers.add_parser("propose", help="Generate a parameter change proposal")
+    propose.add_argument(
+        "--window", type=int, help="Override analysis window size"
+    )
+
+    # approve
+    approve = subparsers.add_parser("approve", help="Approve a pending proposal")
+    approve.add_argument("proposal_id", help="Proposal ID to approve")
+    approve.add_argument("--by", help="Who is approving (default: operator)")
+
+    # reject
+    reject = subparsers.add_parser("reject", help="Reject a pending proposal")
+    reject.add_argument("proposal_id", help="Proposal ID to reject")
+    reject.add_argument("--reason", default="", help="Reason for rejection")
+    reject.add_argument("--by", help="Who is rejecting (default: operator)")
+
+    # proposals
+    subparsers.add_parser("proposals", help="List all proposals")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -454,6 +626,10 @@ def main():
         "metrics": cmd_metrics,
         "analyze": cmd_analyze,
         "export": cmd_export,
+        "propose": cmd_propose,
+        "approve": cmd_approve,
+        "reject": cmd_reject,
+        "proposals": cmd_proposals,
     }
 
     commands[args.command](args)

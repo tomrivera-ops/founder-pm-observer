@@ -1,0 +1,32 @@
+{
+  "proposal_id": "prop-20260209-003327-d67d89",
+  "created_at": "2026-02-09T00:33:27.433826+00:00",
+  "status": "approved",
+  "findings_summary": [
+    "All builds succeeded in this window",
+    "Median cycle time 30.5m exceeds target 30m",
+    "Manual intervention rate 17% exceeds target 10%"
+  ],
+  "source_report": "analysis-20260209-003327.md",
+  "parameter_diffs": [
+    {
+      "path": "targets.median_cycle_time_minutes",
+      "old_value": 30,
+      "new_value": 33.0,
+      "reason": "Median cycle time 30.5m exceeds target 30m"
+    },
+    {
+      "path": "targets.manual_intervention_rate",
+      "old_value": 0.1,
+      "new_value": 0.15,
+      "reason": "Manual intervention rate 17% exceeds target 10%"
+    }
+  ],
+  "impact_level": "low",
+  "rationale": "Based on 3 analysis finding(s):\n  - targets.median_cycle_time_minutes: 30 -> 33.0 (Median cycle time 30.5m exceeds target 30m)\n  - targets.manual_intervention_rate: 0.1 -> 0.15 (Manual intervention rate 17% exceeds target 10%)",
+  "version_from": "v0.1.0",
+  "version_to": "v0.1.1",
+  "resolved_by": "tom",
+  "resolved_at": "2026-02-09T00:33:34.214053+00:00",
+  "rejection_reason": ""
+}

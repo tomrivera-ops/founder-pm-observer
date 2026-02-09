@@ -209,14 +209,22 @@ class ContextHub:
     # --- Proposals ---
 
     def write_proposal(self, proposal_id: str, content: dict) -> Path:
-        """Write a parameter change proposal."""
+        """Write or update a parameter change proposal."""
         path = self.proposals_dir / f"{proposal_id}.json"
         with open(path, "w") as f:
             json.dump(content, f, indent=2)
         return path
 
+    def read_proposal(self, proposal_id: str) -> Optional[dict]:
+        """Read a specific proposal by ID. Returns None if not found."""
+        path = self.proposals_dir / f"{proposal_id}.json"
+        if not path.exists():
+            return None
+        with open(path, "r") as f:
+            return json.load(f)
+
     def list_proposals(self) -> list[str]:
-        """List all proposal filenames."""
+        """List all proposal IDs (newest first)."""
         return sorted(
             [p.stem for p in self.proposals_dir.glob("*.json")],
             reverse=True,
