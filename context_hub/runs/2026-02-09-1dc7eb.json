@@ -1,0 +1,27 @@
+{
+  "run_id": "2026-02-09-1dc7eb",
+  "source": "founder-pm",
+  "input_type": "PRD",
+  "input_ref": "Phase 3 Parameter Proposal Engine + Approval Gate",
+  "timestamp": "2026-02-09T00:36:40.993204+00:00",
+  "duration_minutes": 12.0,
+  "llm_model": "claude-4.6",
+  "pipeline_steps_executed": [
+    "ingest",
+    "build",
+    "code_review",
+    "validation",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 123,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 1730,
+  "files_created": 7,
+  "files_modified": 3,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": "Phase 3 proposal engine + approval gate | status:complete | direct build (no pm run) | 123 tests all passing"
+}
