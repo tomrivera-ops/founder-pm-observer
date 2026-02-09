@@ -1,8 +1,8 @@
 # Founder-PM Observer Plane
 
-**Advisory Optimization System — Phase 2: Analyze**
+**Advisory Optimization System — Phase 3: Suggest**
 
-The Observer Plane is a parallel advisory system that watches Founder-PM executions, records outcome metrics, and (in later phases) produces optimization recommendations.
+The Observer Plane is a parallel advisory system that watches Founder-PM executions, records outcome metrics, analyzes trends, and generates parameter change proposals for human approval.
 
 It does not execute builds, modify prompts, or alter runtime behavior.
 
@@ -43,10 +43,14 @@ founder-pm-observer/             # Sibling to founder-pm/ — never inside it
 │   ├── metrics.py               # Aggregation + trends
 │   ├── analysis_agent.py        # Analysis agent (Phase 2)
 │   ├── analysis_config.py       # Agent configuration
-│   └── monitoring.py            # Agent performance monitoring
+│   ├── monitoring.py            # Agent performance monitoring
+│   ├── proposal_schema.py       # Proposal contract (Phase 3)
+│   └── proposal_engine.py       # Rule-based proposal engine (Phase 3)
 ├── tests/
 │   ├── test_phase1.py           # 33 tests (Phase 1)
-│   └── test_analysis_agent.py   # Analysis agent tests (Phase 2)
+│   ├── test_analysis_agent.py   # 36 tests (Phase 2)
+│   ├── test_proposal_engine.py  # 28 tests (Phase 3)
+│   └── test_approval_gate.py    # 26 tests (Phase 3)
 ├── context_hub/
 │   ├── runs/                    # Immutable run records (JSON)
 │   ├── metrics/                 # Aggregated snapshots
@@ -94,7 +98,19 @@ python bin/observe.py analyze
 python bin/observe.py analyze --print          # print report to stdout
 python bin/observe.py analyze --window 20      # custom window size
 
-# 9. Export all runs as JSON
+# 9. Generate a parameter change proposal (Phase 3)
+python bin/observe.py propose
+python bin/observe.py propose --window 20      # custom window size
+
+# 10. Approve or reject a proposal (Phase 3)
+python bin/observe.py approve <proposal-id>
+python bin/observe.py approve <proposal-id> --by tom
+python bin/observe.py reject <proposal-id> --reason "Not appropriate now"
+
+# 11. List all proposals
+python bin/observe.py proposals
+
+# 12. Export all runs as JSON
 python bin/observe.py export
 ```
 
@@ -242,6 +258,66 @@ The agent reads targets from `context_hub/parameters/`. Key settings:
 
 ---
 
+## Proposal Engine (Phase 3)
+
+The proposal engine is a rule-based system that converts analysis findings into parameter change proposals. Proposals require explicit human approval before being applied.
+
+### How It Works
+
+1. Runs the analysis agent to detect findings (metrics vs targets)
+2. Applies deterministic rules to map findings to parameter adjustments
+3. Computes impact level (low/medium/high) and version bump
+4. Writes a proposal to `context_hub/proposals/`
+5. Waits for explicit `approve` or `reject` via CLI
+6. On approval: writes a new versioned parameter config to `context_hub/parameters/`
+
+### Rules
+
+| Finding | Rule | Parameter Change |
+|---------|------|-----------------|
+| Cycle time exceeds target | Relax target by 10% | `targets.median_cycle_time_minutes` |
+| Build success rate below target | Lower target by 5% (floor: 50%) | `targets.build_success_rate` |
+| Lint errors exceed target | Raise tolerance by 2 | `targets.max_lint_errors_per_run` |
+| Type errors exceed target | Raise tolerance by 1 | `targets.max_type_errors_per_run` |
+| Manual intervention exceeds target | Relax target by 5% (cap: 100%) | `targets.manual_intervention_rate` |
+| Critical degrading trend | Expand analysis window by 5 | `observer.analysis_window_size` |
+
+### Version Bumping
+
+- **Low impact** (1-2 changes, no critical findings): patch bump (v0.1.0 -> v0.1.1)
+- **Medium impact** (>2 changes): minor bump (v0.1.0 -> v0.2.0)
+- **High impact** (any critical finding): minor bump (v0.1.0 -> v0.2.0)
+
+### Constraints
+
+- **One pending proposal at a time** — approve or reject before creating another
+- **No LLM calls** — all rules are deterministic and auditable
+- **No auto-apply** — every change requires explicit human approval (Phase 4)
+- **Read-only** with respect to run records (never modifies runs)
+
+### Example Workflow
+
+```bash
+# 1. Generate proposal from current analysis
+python bin/observe.py propose
+
+# Output:
+# Proposal generated: prop-20260209-003327-d67d89
+#   Impact:  low
+#   Version: v0.1.0 -> v0.1.1
+#   Changes: 2
+#     targets.median_cycle_time_minutes: 30 -> 33.0
+#     targets.manual_intervention_rate: 0.1 -> 0.15
+
+# 2. Review and approve
+python bin/observe.py approve prop-20260209-003327-d67d89
+
+# 3. Or reject with reason
+python bin/observe.py reject prop-20260209-003327-d67d89 --reason "Wait for more data"
+```
+
+---
+
 ## Running Tests
 
 ```bash
@@ -250,7 +326,7 @@ cd founder-pm-observer
 pytest tests/ -v
 ```
 
-Tests cover: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, trend computation, analysis agent execution, finding generation, report format, and agent monitoring.
+123 tests across 4 test files covering: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, trend computation, analysis agent execution, finding generation, report format, agent monitoring, proposal schema, rule matching, version bumping, impact computation, approval gate, rejection flow, and one-pending enforcement.
 
 ---
 
@@ -260,7 +336,7 @@ Tests cover: schema immutability, serialization roundtrips, validation rules, Co
 |-------|--------|-------|
 | **1 — Measure** | Complete | Context Hub, schema, CLI, metrics, bridge |
 | **2 — Analyze** | Complete | Read-only analysis agent, markdown reports, monitoring |
-| **3 — Suggest** | Planned | Parameter proposals, approval gate |
+| **3 — Suggest** | Complete | Parameter proposals, approval gate, rule engine |
 | **4 — Automate** | Future | Confidence-gated auto-apply, rollback |
 
 ---
