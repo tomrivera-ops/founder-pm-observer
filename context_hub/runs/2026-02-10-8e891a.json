@@ -1,0 +1,21 @@
+{
+  "run_id": "2026-02-10-8e891a",
+  "source": "founder-pm",
+  "input_type": "PRD",
+  "input_ref": "",
+  "timestamp": "2026-02-10T01:54:57.441508+00:00",
+  "duration_minutes": 0.0,
+  "llm_model": "",
+  "pipeline_steps_executed": [],
+  "build_success": true,
+  "tests_passed": 0,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 0,
+  "files_created": 0,
+  "files_modified": 0,
+  "manual_intervention": false,
+  "manual_intervention_reason": "",
+  "notes": ""
+}
