@@ -1,0 +1,527 @@
+{
+  "observer_entry_points": [
+    {
+      "name": "bridge/emit-to-observer.sh",
+      "type": "bridge_script",
+      "description": "Post-hook bash script that reads a founder-pm run artifact JSON and translates it into an Observer run record via the CLI. Always exits 0 (non-blocking).",
+      "line_range": "1-284",
+      "fields_emitted": [
+        "input_type", "input_ref", "llm_model", "pipeline_steps_executed",
+        "duration_minutes", "build_success", "tests_passed", "tests_failed",
+        "lint_errors", "type_errors", "diff_size_lines", "files_created",
+        "files_modified", "manual_intervention", "manual_intervention_reason", "notes"
+      ],
+      "gaps": [
+        "llm_model defaults to empty unless LLM_MODEL_OVERRIDE env var is set",
+        "diff_size_lines defaults to 0 unless DIFF_LINES_OVERRIDE env var is set",
+        "files_created/files_modified default to 0 unless overridden",
+        "duration_minutes computed from created_at to file mtime — lossy heuristic",
+        "no token/cost extraction",
+        "no retry count extraction",
+        "no per-step timing extraction"
+      ]
+    },
+    {
+      "name": "bin/observe.py::cmd_record",
+      "type": "interactive_cli",
+      "description": "Interactive CLI command that prompts the operator for all run fields and writes an immutable RunRecord.",
+      "line_range": "71-145",
+      "fields_emitted": "all RunRecord fields via interactive prompts"
+    },
+    {
+      "name": "bin/observe.py::cmd_record_fast",
+      "type": "cli_fast_mode",
+      "description": "Non-interactive CLI command accepting all fields as --flags. Used by bridge script.",
+      "line_range": "148-181",
+      "fields_emitted": "all RunRecord fields via CLI arguments"
+    },
+    {
+      "name": "lib/analysis_agent.py::AnalysisAgent.run",
+      "type": "analysis_agent",
+      "description": "Phase 2 read-only agent that loads runs, computes metrics/trends, flags anomalies, generates markdown reports, and logs execution to agent_runs.jsonl.",
+      "line_range": "89-163",
+      "fields_emitted": [
+        "AnalysisResult: report_filename, report_content, findings_count, runs_analyzed, duration_seconds, success, error",
+        "AgentRunLog: agent_name, timestamp, duration_seconds, runs_analyzed, findings_count, success, error, report_filename, window_size"
+      ]
+    },
+    {
+      "name": "lib/monitoring.py::AgentMonitor.log_run",
+      "type": "agent_monitoring",
+      "description": "Append-only JSON-lines logger for analysis agent executions. Records timing, outcome, and metadata per agent run.",
+      "line_range": "55-63",
+      "fields_emitted": [
+        "agent_name", "timestamp", "duration_seconds", "runs_analyzed",
+        "findings_count", "success", "error", "report_filename", "window_size"
+      ]
+    },
+    {
+      "name": "lib/proposal_engine.py::ProposalEngine.generate_proposal",
+      "type": "proposal_engine",
+      "description": "Phase 3 rule engine that converts analysis findings into parameter change proposals with version bumping and impact assessment.",
+      "line_range": "219-280",
+      "fields_emitted": [
+        "proposal_id", "created_at", "status", "findings_summary", "source_report",
+        "parameter_diffs", "impact_level", "rationale", "version_from", "version_to"
+      ]
+    },
+    {
+      "name": ".pm/checkpoints.log",
+      "type": "checkpoint_log",
+      "description": "Pipe-delimited event log tracking PM checkpoint lifecycle events. Written by the founder-pm execution plane.",
+      "line_range": "1-8",
+      "format": "timestamp|checkpoint-name|event|tag|sha|task-file",
+      "fields_emitted": ["timestamp", "checkpoint_name", "event", "tag", "sha", "task_file"]
+    }
+  ],
+
+  "storage_locations": {
+    "run_records": {
+      "path": "context_hub/runs/{run_id}.json",
+      "format": "JSON (one file per run)",
+      "mutability": "immutable (append-only, refuses overwrite)",
+      "write_pattern": "atomic temp-file-then-rename",
+      "current_count": 17
+    },
+    "agent_monitoring_log": {
+      "path": "context_hub/metrics/agent_runs.jsonl",
+      "format": "JSON-lines (one entry per line)",
+      "mutability": "append-only",
+      "current_count": 23
+    },
+    "analysis_reports": {
+      "path": "context_hub/analysis/analysis-{YYYYMMDD-HHMMSS}.md",
+      "format": "Markdown",
+      "mutability": "overwritable (by filename)",
+      "current_count": 23
+    },
+    "proposals": {
+      "path": "context_hub/proposals/{proposal_id}.json",
+      "format": "JSON",
+      "mutability": "mutable (status transitions: pending -> approved|rejected)",
+      "current_count": 1
+    },
+    "parameter_configs": {
+      "path": "context_hub/parameters/{version}.json",
+      "format": "JSON",
+      "mutability": "versioned (new file per version, old versions preserved)",
+      "current_count": 2
+    },
+    "checkpoint_log": {
+      "path": ".pm/checkpoints.log",
+      "format": "pipe-delimited text",
+      "mutability": "append-only",
+      "current_entries": 4
+    },
+    "aggregated_metrics": {
+      "path": null,
+      "format": "computed in-memory by lib/metrics.py::compute_metrics()",
+      "mutability": "ephemeral — not persisted as a standalone artifact",
+      "note": "MetricsSummary is recalculated on every observe metrics or observe analyze invocation"
+    }
+  },
+
+  "current_observer_schema": {
+    "run_level_fields": {
+      "identity": {
+        "run_id": "string — time-sortable unique ID (YYYY-MM-DD-XXXXXX)",
+        "source": "string — always 'founder-pm'"
+      },
+      "input": {
+        "input_type": "enum — PRD|FEATURE|BUGFIX|REFACTOR|HOTFIX|OTHER",
+        "input_ref": "string — PRD filename, ticket ID, etc."
+      },
+      "timing": {
+        "timestamp": "string — ISO 8601 UTC (run creation time)",
+        "duration_minutes": "float — total run duration in minutes"
+      },
+      "execution_context": {
+        "llm_model": "string — primary model name (often empty from bridge)",
+        "pipeline_steps_executed": "list[string] — ordered step names from PipelineStep enum"
+      },
+      "outcomes": {
+        "build_success": "bool — overall build success",
+        "tests_passed": "int",
+        "tests_failed": "int",
+        "lint_errors": "int",
+        "type_errors": "int",
+        "diff_size_lines": "int — total lines changed",
+        "files_created": "int",
+        "files_modified": "int"
+      },
+      "human_involvement": {
+        "manual_intervention": "bool",
+        "manual_intervention_reason": "string"
+      },
+      "freeform": {
+        "notes": "string — human-authored notes; bridge appends code_review and arch_audit summaries here"
+      }
+    },
+    "agent_monitoring_fields": {
+      "per_agent_run": {
+        "agent_name": "string — always 'analysis_agent'",
+        "timestamp": "string — ISO 8601 UTC",
+        "duration_seconds": "float — wall-clock execution time of the agent",
+        "runs_analyzed": "int — number of run records processed",
+        "findings_count": "int — number of findings produced",
+        "success": "bool — whether the agent completed without error",
+        "error": "string|null — error message if failed",
+        "report_filename": "string — analysis report filename",
+        "window_size": "int — configured analysis window size"
+      }
+    },
+    "aggregated_metrics_fields": {
+      "computed_by": "lib/metrics.py::compute_metrics() — ephemeral, not persisted",
+      "fields": {
+        "run_count": "int",
+        "date_range_start": "string",
+        "date_range_end": "string",
+        "duration_mean": "float",
+        "duration_median": "float",
+        "duration_min": "float",
+        "duration_max": "float",
+        "duration_stddev": "float",
+        "build_success_rate": "float",
+        "total_tests_passed": "int",
+        "total_tests_failed": "int",
+        "test_pass_rate": "float",
+        "avg_lint_errors": "float",
+        "avg_type_errors": "float",
+        "total_lint_errors": "int",
+        "total_type_errors": "int",
+        "avg_diff_size": "float",
+        "total_diff_lines": "int",
+        "manual_intervention_rate": "float",
+        "duration_trend": "string — improving|stable|degrading|insufficient_data",
+        "reliability_trend": "string",
+        "hygiene_trend": "string"
+      }
+    },
+    "decision_fields": {
+      "proposal": {
+        "proposal_id": "string — time-sortable (prop-YYYYMMDD-HHMMSS-XXXXXX)",
+        "created_at": "string — ISO 8601",
+        "status": "string — pending|approved|rejected",
+        "findings_summary": "list[string] — finding messages that triggered proposal",
+        "source_report": "string — analysis report filename",
+        "parameter_diffs": "list[{path, old_value, new_value, reason}]",
+        "impact_level": "string — low|medium|high",
+        "rationale": "string — human-readable explanation",
+        "version_from": "string — semver",
+        "version_to": "string — semver",
+        "resolved_by": "string — who approved/rejected",
+        "resolved_at": "string — ISO 8601",
+        "rejection_reason": "string"
+      }
+    },
+    "checkpoint_lifecycle_fields": {
+      "format": "pipe-delimited: timestamp|checkpoint-name|event|tag|sha|task-file",
+      "event_types": ["CHECKPOINT", "COMPLETE"],
+      "fields": {
+        "timestamp": "ISO 8601",
+        "checkpoint_name": "string",
+        "event": "string — CHECKPOINT or COMPLETE",
+        "tag": "string — git-style tag reference",
+        "sha": "string — short commit SHA",
+        "task_file": "string — task filename (often empty)"
+      }
+    },
+    "answers": {
+      "per_step_start_end_timestamps_recorded": {
+        "answer": false,
+        "detail": "Only run-level 'timestamp' (creation time) exists. No per-step start/end timestamps. The pipeline_steps_executed field is a flat list with no timing metadata."
+      },
+      "durations_computed_and_stored": {
+        "answer": "partial",
+        "detail": "Run-level 'duration_minutes' is stored in each RunRecord. Agent-level 'duration_seconds' is stored in agent_runs.jsonl. Per-step durations are NOT recorded anywhere. The bridge computes duration_minutes as (file_mtime - created_at), which is a lossy heuristic."
+      },
+      "model_versions_in_artifacts": {
+        "answer": "partial",
+        "detail": "RunRecord has 'llm_model' field. Seed data populates it ('claude-4.6'). However, the bridge script defaults it to empty unless LLM_MODEL_OVERRIDE env var is set. In practice, bridge-emitted records often have llm_model='' since the founder-pm artifact does not contain the model name."
+      },
+      "tokens_recorded": {
+        "answer": false,
+        "detail": "No token count, token usage, or cost fields exist anywhere in the schema, bridge, or storage. This is a complete gap."
+      },
+      "retry_attempts_recorded_persistently": {
+        "answer": false,
+        "detail": "No retry count, attempt counter, or backoff log exists in any schema or storage. The bridge's retry logic (if any) in the Makefile snippet is not instrumented."
+      },
+      "aggregation_across_runs": {
+        "answer": "partial",
+        "detail": "lib/metrics.py::compute_metrics() computes MetricsSummary with duration stats, success rates, test health, hygiene scores, and trends. However, this is computed on-the-fly and NOT persisted. Analysis reports (markdown) contain a snapshot of these metrics, but not in a machine-readable format. No historical time-series of aggregated metrics exists."
+      }
+    }
+  },
+
+  "coverage_matrix": [
+    {
+      "step": "INGEST",
+      "pipeline_enum": "ingest",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Only recorded as a name in pipeline_steps_executed list. No per-step metadata."
+    },
+    {
+      "step": "AUDIT",
+      "pipeline_enum": "audit",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Step name recorded but no audit-specific metrics captured in the run record."
+    },
+    {
+      "step": "PRE-BUILD",
+      "pipeline_enum": null,
+      "has_log_entry": false,
+      "has_artifact_update": false,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Explicitly excluded in bridge (pre_build_safety mapped to empty). Not in PipelineStep enum."
+    },
+    {
+      "step": "BUILD",
+      "pipeline_enum": "build",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "partial",
+      "records_model": "partial",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "partial",
+      "records_diff_stats": "partial",
+      "notes": "Best-covered step. build_success is run-level boolean (not step-level exit code). duration_minutes is run-level total (not build-step only). llm_model is run-level and often empty from bridge. diff_size_lines/files_created/files_modified are run-level aggregates."
+    },
+    {
+      "step": "REVIEW",
+      "pipeline_enum": "code_review",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Step name in pipeline_steps_executed. Code review issue counts (critical/major/minor) are embedded in the notes field as free-text, not structured fields."
+    },
+    {
+      "step": "VALIDATE",
+      "pipeline_enum": "validation",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "partial",
+      "records_diff_stats": "none",
+      "notes": "Best outcome data: tests_passed, tests_failed, lint_errors, type_errors are dedicated structured fields. No per-step timing or exit code though."
+    },
+    {
+      "step": "CURSOR-AUDIT",
+      "pipeline_enum": "cursor_audit",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Step name in pipeline_steps_executed. Architecture audit issue counts (p0/p1/p2) embedded in notes as free-text, not structured fields."
+    },
+    {
+      "step": "HUMAN",
+      "pipeline_enum": null,
+      "has_log_entry": false,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Excluded from pipeline_steps_executed in bridge. However, captured indirectly via manual_intervention (bool) and manual_intervention_reason (string) fields."
+    },
+    {
+      "step": "PRE-COMMIT",
+      "pipeline_enum": null,
+      "has_log_entry": false,
+      "has_artifact_update": false,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "none",
+      "records_diff_stats": "none",
+      "notes": "Explicitly excluded in bridge (pre_commit_safety mapped to empty). Not in PipelineStep enum. Invisible to Observer."
+    },
+    {
+      "step": "COMMIT",
+      "pipeline_enum": "ship",
+      "has_log_entry": true,
+      "has_artifact_update": true,
+      "has_step_timing": "none",
+      "records_model": "none",
+      "records_tokens": "none",
+      "records_retries": "none",
+      "records_exit_code": "partial",
+      "records_diff_stats": "none",
+      "notes": "Bridge maps commit_success to 'ship'. Commit success inferred from build_success (status=committed|shipped -> true). No commit SHA or ref recorded in run record."
+    }
+  ],
+
+  "gap_priority_list": [
+    {
+      "rank": 1,
+      "signal": "model_provenance_in_artifacts",
+      "current_state": "llm_model field exists in RunRecord but bridge defaults to empty. No per-step model tracking. No model version hash or API endpoint recorded.",
+      "risk": "Cannot audit which model produced which output. Impossible to correlate model changes with outcome changes. Blocks regression analysis on model upgrades.",
+      "why_it_matters": "Model provenance is the single most important chain-of-custody signal. Without it, the Observer cannot attribute performance deltas to model changes vs. input changes vs. code changes.",
+      "minimal_touchpoints": [
+        "bridge/emit-to-observer.sh:120-121 — Extract model from founder-pm artifact if available (e.g. .config.model or .model_used), fallback to LLM_MODEL_OVERRIDE",
+        "lib/schema.py:63 — Field already exists. Consider adding model_version (hash/snapshot ID) alongside model name"
+      ]
+    },
+    {
+      "rank": 2,
+      "signal": "per_step_timing_and_durations",
+      "current_state": "Only run-level duration_minutes exists. No per-step start/end timestamps. Bridge computes total duration from file mtime heuristic.",
+      "risk": "Cannot identify which step is the bottleneck. Duration regressions are invisible at the step level. Optimization efforts are unguided.",
+      "why_it_matters": "Per-step timing enables bottleneck detection, SLA monitoring per phase, and precise regression attribution. Without it, a 5-minute audit slowdown is masked by run-level noise.",
+      "minimal_touchpoints": [
+        "lib/schema.py — Add step_timings: dict[str, {start: str, end: str, duration_seconds: float}] to RunRecord",
+        "bridge/emit-to-observer.sh — Extract per-step timestamps from founder-pm artifact if available (e.g. .steps[].started_at/.completed_at)"
+      ]
+    },
+    {
+      "rank": 3,
+      "signal": "tokens_and_cost",
+      "current_state": "No token count or cost fields anywhere in the schema, bridge, CLI, or storage.",
+      "risk": "Cannot track cost per run, cost per step, or cost trends. No way to correlate token usage with output quality. Budget planning is blind.",
+      "why_it_matters": "Token usage is the primary cost driver. Without tracking, cost optimization is impossible and budget overruns are invisible until the invoice arrives.",
+      "minimal_touchpoints": [
+        "lib/schema.py — Add fields: tokens_input: int = 0, tokens_output: int = 0, cost_usd: float = 0.0",
+        "bridge/emit-to-observer.sh — Extract from founder-pm artifact (e.g. .usage.input_tokens, .usage.output_tokens) or from API response logs",
+        "bin/observe.py — Add --tokens-input, --tokens-output, --cost flags to record-fast"
+      ]
+    },
+    {
+      "rank": 4,
+      "signal": "retries_persisted",
+      "current_state": "No retry count, attempt counter, or backoff log in any schema or storage.",
+      "risk": "Silent retries mask model instability. A run that succeeds on attempt 3 looks identical to one that succeeds on attempt 1. Flaky build patterns are invisible.",
+      "why_it_matters": "Retry frequency is a leading indicator of model degradation and API instability. Persisting it enables early warning before failures become visible.",
+      "minimal_touchpoints": [
+        "lib/schema.py — Add retry_count: int = 0, max_retries: int = 0",
+        "bridge/emit-to-observer.sh — Extract from founder-pm artifact (e.g. .retries or .attempts)",
+        "bin/observe.py — Add --retries flag to record-fast"
+      ]
+    },
+    {
+      "rank": 5,
+      "signal": "diff_stats_from_bridge",
+      "current_state": "RunRecord has diff_size_lines, files_created, files_modified fields, but bridge defaults all to 0 unless env vars DIFF_LINES_OVERRIDE/FILES_CREATED_OVERRIDE/FILES_MODIFIED_OVERRIDE are set. In practice, these are nearly always 0.",
+      "risk": "Cannot correlate code volume with outcome quality. Large diffs that cause failures look identical to small diffs. Change-size risk is invisible.",
+      "why_it_matters": "Diff size is a strong predictor of review burden and defect density. Without it, the Observer cannot flag high-risk large changes or track code velocity.",
+      "minimal_touchpoints": [
+        "bridge/emit-to-observer.sh:213-216 — Compute diff stats from git (git diff --stat HEAD~1 in the founder-pm repo) instead of relying on env var overrides"
+      ]
+    },
+    {
+      "rank": 6,
+      "signal": "error_taxonomy_and_fail_reason_codes",
+      "current_state": "build_success is a boolean. No structured error category, error code, or failure reason. Failed runs have no machine-readable failure classification.",
+      "risk": "Cannot distinguish between categories of failure (model error, test failure, lint failure, timeout, dependency issue). Pattern detection across failure modes is impossible.",
+      "why_it_matters": "Error taxonomy enables targeted remediation. Knowing 80% of failures are lint-related vs. test-related drives completely different interventions.",
+      "minimal_touchpoints": [
+        "lib/schema.py — Add fail_reason: str = '' (free-form) and fail_category: str = '' (enum: model_error|test_failure|lint_failure|type_failure|timeout|dependency|unknown)",
+        "bridge/emit-to-observer.sh — Derive fail_category from artifact status and validation results"
+      ]
+    },
+    {
+      "rank": 7,
+      "signal": "run_replay_inputs_context_snapshot_hash",
+      "current_state": "input_ref captures the PRD filename or ticket ID. No hash of the actual input content, no snapshot of the prompt/context sent to the model, no reproducibility marker.",
+      "risk": "Cannot replay or reproduce a run. Cannot determine if two runs with the same input_ref used identical inputs. A/B comparison is impossible.",
+      "why_it_matters": "Reproducibility is foundational for debugging and regression analysis. A content hash enables deduplication, cache-hit detection, and deterministic replay.",
+      "minimal_touchpoints": [
+        "lib/schema.py — Add input_content_hash: str = '' (SHA-256 of input file/prompt)",
+        "bridge/emit-to-observer.sh — Compute hash of the input file referenced by .description or .target"
+      ]
+    },
+    {
+      "rank": 8,
+      "signal": "metrics_persistence_and_time_series",
+      "current_state": "MetricsSummary is computed on-the-fly by compute_metrics() and never persisted. Analysis reports contain metrics in markdown (not machine-readable). No historical time-series exists.",
+      "risk": "Cannot plot trends over time without recomputing from raw runs. No cheap way to show a dashboard of metrics over weeks/months.",
+      "why_it_matters": "Persisted metrics snapshots enable dashboards, alerting thresholds, and long-term trend analysis without expensive recomputation.",
+      "minimal_touchpoints": [
+        "lib/analysis_agent.py — After computing metrics, serialize MetricsSummary to context_hub/metrics/metrics-{timestamp}.json alongside the markdown report"
+      ]
+    }
+  ],
+
+  "recommended_minimum_observer_v1": {
+    "description": "Minimum viable Observer v1 enhancement to close the most critical gaps without breaking the existing append-only, one-way-dependency architecture.",
+    "schema_additions": {
+      "RunRecord": {
+        "tokens_input": { "type": "int", "default": 0, "purpose": "Total input tokens for the run" },
+        "tokens_output": { "type": "int", "default": 0, "purpose": "Total output tokens for the run" },
+        "cost_usd": { "type": "float", "default": 0.0, "purpose": "Estimated total cost in USD" },
+        "retry_count": { "type": "int", "default": 0, "purpose": "Number of retry attempts before success/failure" },
+        "fail_category": { "type": "string", "default": "", "purpose": "Structured failure reason enum" },
+        "input_content_hash": { "type": "string", "default": "", "purpose": "SHA-256 of input content for reproducibility" },
+        "step_timings": {
+          "type": "dict[str, object]",
+          "default": {},
+          "purpose": "Per-step timing: {step_name: {start: ISO8601, end: ISO8601, duration_seconds: float}}"
+        }
+      },
+      "note": "All new fields have zero-value defaults for backward compatibility. Existing records remain valid."
+    },
+    "bridge_changes": {
+      "emit-to-observer.sh": [
+        "Extract llm_model from artifact .config.model or .model field if available",
+        "Compute diff stats via git diff --stat instead of relying on env var overrides",
+        "Extract token counts from artifact .usage or .token_usage if available",
+        "Hash input content for input_content_hash",
+        "Extract retry count from artifact .retries or .attempts if available"
+      ]
+    },
+    "metrics_persistence": {
+      "action": "After compute_metrics(), write a MetricsSummary JSON snapshot to context_hub/metrics/snapshot-{timestamp}.json",
+      "benefit": "Enables time-series dashboards and cheap historical queries without recomputing from raw runs"
+    },
+    "cli_additions": {
+      "record-fast": [
+        "--tokens-input", "--tokens-output", "--cost",
+        "--retries", "--fail-category", "--input-hash"
+      ]
+    },
+    "estimated_touchpoints": {
+      "lib/schema.py": "Add 7 new fields to RunRecord + update validation",
+      "bridge/emit-to-observer.sh": "Add 5 extraction blocks (~40 lines)",
+      "bin/observe.py": "Add 6 new CLI flags to record-fast parser (~12 lines)",
+      "lib/analysis_agent.py": "Add 1 metrics persistence call (~5 lines)",
+      "lib/metrics.py": "Add to_json persistence method (already exists)"
+    },
+    "backward_compatibility": "All additions use zero-value defaults. Old records deserialize cleanly via RunRecord.from_dict() which already filters to known fields. No migration needed."
+  }
+}
