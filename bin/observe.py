@@ -431,6 +431,149 @@ def cmd_reject(args):
         print(f"  Reason: {proposal.rejection_reason}")
 
 
+def cmd_summary(args):
+    """One-screen dashboard of Observer state: metrics, trends, proposals, readiness."""
+    hub = get_hub()
+
+    run_count = hub.run_count()
+    if run_count == 0:
+        print("No runs recorded yet.")
+        return
+
+    # Load current parameters
+    params = hub.latest_parameters()
+    config = AnalysisConfig.from_parameters(params)
+    window = config.analysis_window_size
+
+    # Compute metrics
+    all_runs = hub.list_runs(newest_first=True)
+    current_runs = all_runs[:window]
+    previous_runs = all_runs[window:window * 2]
+
+    from lib.metrics import compute_metrics, compute_trends
+    current = compute_metrics(current_runs)
+    if previous_runs:
+        previous = compute_metrics(previous_runs)
+        current = compute_trends(current, previous, config.trend_threshold)
+
+    # Proposals
+    engine = ProposalEngine(hub, config)
+    proposals = engine.list_all_proposals()
+    approved = [p for p in proposals if p.status == "approved"]
+    pending = [p for p in proposals if p.is_pending]
+
+    # Parameter version
+    param_files = sorted(hub.parameters_dir.glob("v*.json"), reverse=True)
+    version = param_files[0].stem if param_files else "v0.1.0"
+
+    # Targets
+    targets = params.get("targets", {})
+    build_target = targets.get("build_success_rate", 0.85)
+    intervention_target = targets.get("manual_intervention_rate", 0.2)
+    cycle_target = targets.get("max_cycle_time_minutes", 30)
+
+    # Trend symbols
+    trend_sym = {"improving": "^", "degrading": "v", "stable": "=", "insufficient_data": "?", "": "-"}
+
+    # Real (non-seed) runs
+    real_runs = [r for r in all_runs if "seed" not in r.run_id]
+
+    # Analysis count
+    analysis_count = len(list(hub.analysis_dir.glob("*.md")))
+
+    # Header
+    print()
+    print("  Observer Summary")
+    print("=" * 60)
+
+    # Core metrics
+    print(f"\n  Metrics (window={window}, {len(current_runs)} runs)")
+    build_ok = "ok" if current.build_success_rate >= build_target else "MISS"
+    interv_ok = "ok" if current.manual_intervention_rate <= intervention_target else "MISS"
+    cycle_ok = "ok" if current.duration_median <= cycle_target else "MISS"
+
+    print(f"    Build success:    {current.build_success_rate:>6.1%}  "
+          f"(target: {build_target:.0%})  [{build_ok}]")
+    print(f"    Intervention:     {current.manual_intervention_rate:>6.1%}  "
+          f"(target: {intervention_target:.0%})  [{interv_ok}]")
+    print(f"    Cycle time (med): {current.duration_median:>5.1f}m  "
+          f"(target: {cycle_target}m)  [{cycle_ok}]")
+    print(f"    Lint errors/run:  {current.avg_lint_errors:>5.1f}")
+    print(f"    Type errors/run:  {current.avg_type_errors:>5.1f}")
+
+    # Test health
+    total_tests = current.total_tests_passed + current.total_tests_failed
+    if total_tests > 0:
+        print(f"    Test pass rate:   {current.test_pass_rate:>6.1%}  "
+              f"({current.total_tests_passed}p / {current.total_tests_failed}f)")
+
+    # Trends
+    print(f"\n  Trends")
+    print(f"    Duration:     {current.duration_trend or 'N/A':>12}  "
+          f"{trend_sym.get(current.duration_trend, '-')}")
+    print(f"    Reliability:  {current.reliability_trend or 'N/A':>12}  "
+          f"{trend_sym.get(current.reliability_trend, '-')}")
+    print(f"    Hygiene:      {current.hygiene_trend or 'N/A':>12}  "
+          f"{trend_sym.get(current.hygiene_trend, '-')}")
+
+    # Volume
+    print(f"\n  Volume")
+    print(f"    Total runs:       {run_count} ({len(real_runs)} real)")
+    print(f"    Analysis reports: {analysis_count}")
+    print(f"    Proposals:        {len(proposals)} total, {len(approved)} approved, {len(pending)} pending")
+    print(f"    Parameters:       {version}")
+
+    # Recent proposals
+    if proposals:
+        print(f"\n  Recent Proposals")
+        for p in proposals[-3:]:
+            print(f"    {p.proposal_id}  {p.status:<10}  "
+                  f"{p.version_from}->{p.version_to}  ({p.diff_count} changes)")
+
+    # Phase 4 quick score
+    print(f"\n  Phase 4 Quick Check")
+    checks = 0
+    total_checks = 7
+    if run_count >= 30:
+        checks += 1
+        print(f"    [PASS] Runs >= 30 ({run_count})")
+    else:
+        print(f"    [FAIL] Runs >= 30 ({run_count})")
+    if len(proposals) >= 10:
+        checks += 1
+        print(f"    [PASS] Proposals >= 10 ({len(proposals)})")
+    else:
+        print(f"    [FAIL] Proposals >= 10 ({len(proposals)})")
+    if len(approved) >= 5:
+        checks += 1
+        print(f"    [PASS] Approved >= 5 ({len(approved)})")
+    else:
+        print(f"    [FAIL] Approved >= 5 ({len(approved)})")
+    if current.build_success_rate >= 0.9:
+        checks += 1
+        print(f"    [PASS] Build success >= 90% ({current.build_success_rate:.1%})")
+    else:
+        print(f"    [FAIL] Build success >= 90% ({current.build_success_rate:.1%})")
+    if current.manual_intervention_rate <= 0.15:
+        checks += 1
+        print(f"    [PASS] Intervention <= 15% ({current.manual_intervention_rate:.1%})")
+    else:
+        print(f"    [FAIL] Intervention <= 15% ({current.manual_intervention_rate:.1%})")
+    if current.reliability_trend != "degrading":
+        checks += 1
+        print(f"    [PASS] Reliability not degrading ({current.reliability_trend})")
+    else:
+        print(f"    [FAIL] Reliability not degrading ({current.reliability_trend})")
+    if not pending:
+        checks += 1
+        print(f"    [PASS] No pending proposals")
+    else:
+        print(f"    [FAIL] {len(pending)} pending proposal(s)")
+    print(f"    Score: {checks}/{total_checks}")
+
+    print()
+
+
 def cmd_proposals(args):
     """List all proposals."""
     hub = get_hub()
@@ -611,6 +754,9 @@ def main():
     # proposals
     subparsers.add_parser("proposals", help="List all proposals")
 
+    # summary
+    subparsers.add_parser("summary", help="One-screen dashboard of Observer state")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -630,6 +776,7 @@ def main():
         "approve": cmd_approve,
         "reject": cmd_reject,
         "proposals": cmd_proposals,
+        "summary": cmd_summary,
     }
 
     commands[args.command](args)
