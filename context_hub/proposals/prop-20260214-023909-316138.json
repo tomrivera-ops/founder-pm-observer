@@ -1,0 +1,38 @@
+{
+  "proposal_id": "prop-20260214-023909-316138",
+  "created_at": "2026-02-14T02:39:09.856219+00:00",
+  "status": "approved",
+  "findings_summary": [
+    "Build success rate 20% is below target 90%",
+    "Manual intervention rate 80% exceeds target 15%",
+    "Build reliability is trending downward (degrading)"
+  ],
+  "source_report": "analysis-20260214-023909.md",
+  "parameter_diffs": [
+    {
+      "path": "targets.build_success_rate",
+      "old_value": 0.9,
+      "new_value": 0.85,
+      "reason": "Build success rate 20% is below target 90%"
+    },
+    {
+      "path": "targets.manual_intervention_rate",
+      "old_value": 0.15,
+      "new_value": 0.2,
+      "reason": "Manual intervention rate 80% exceeds target 15%"
+    },
+    {
+      "path": "observer.analysis_window_size",
+      "old_value": 10,
+      "new_value": 15,
+      "reason": "Build reliability is trending downward (degrading)"
+    }
+  ],
+  "impact_level": "high",
+  "rationale": "Based on 3 analysis finding(s):\n  - targets.build_success_rate: 0.9 -> 0.85 (Build success rate 20% is below target 90%)\n  - targets.manual_intervention_rate: 0.15 -> 0.2 (Manual intervention rate 80% exceeds target 15%)\n  - observer.analysis_window_size: 10 -> 15 (Build reliability is trending downward (degrading))",
+  "version_from": "v0.1.1",
+  "version_to": "v0.2.0",
+  "resolved_by": "tomr",
+  "resolved_at": "2026-02-14T02:40:04.551879+00:00",
+  "rejection_reason": ""
+}
