@@ -1,0 +1,32 @@
+{
+  "version": "v0.3.0",
+  "created": "2026-02-14",
+  "description": "Applied proposal prop-20260214-032611-b6d565",
+  "build": {
+    "audit_depth": "full",
+    "redundancy_threshold": 0.15,
+    "auto_skip_audit_if_score_above": null,
+    "max_iterations": 3,
+    "verbosity": "medium"
+  },
+  "models": {
+    "primary_builder": "claude-4.6",
+    "auditor": null,
+    "reviewer": null,
+    "notes": "Single-model in v0. Multi-model is a Phase 4+ concern."
+  },
+  "targets": {
+    "median_cycle_time_minutes": 33.0,
+    "build_success_rate": 0.8,
+    "manual_intervention_rate": 0.25,
+    "max_lint_errors_per_run": 5,
+    "max_type_errors_per_run": 0
+  },
+  "observer": {
+    "analysis_window_size": 20,
+    "trend_threshold": 0.1,
+    "auto_apply_enabled": false,
+    "notes": "Auto-apply disabled until Phase 4. All changes require explicit approval."
+  },
+  "applied_from_proposal": "prop-20260214-032611-b6d565"
+}
