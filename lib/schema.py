@@ -80,11 +80,27 @@ class RunRecord:
     # Optional notes (free-form, human-authored)
     notes: str = ""
 
+    # --- v2.1 Additions (backward-compatible defaults) ---
+    model_provider: str = ""
+    model_name: str = ""
+    tokens_input: int = 0
+    tokens_output: int = 0
+    cost_usd: float = 0.0
+    retry_count: int = 0
+    fail_category: str = ""
+    fail_stage: str = ""
+    input_content_hash: str = ""
+    step_timings: tuple = ()  # Tuple of (step, duration_seconds) pairs for immutability
+    is_recursive: bool = False
+    recursive_parent_id: str = ""
+    iteration_number: int = 0
+
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage."""
         d = asdict(self)
-        # Convert tuple back to list for JSON compatibility
+        # Convert tuples back to lists for JSON compatibility
         d["pipeline_steps_executed"] = list(d["pipeline_steps_executed"])
+        d["step_timings"] = list(d["step_timings"])
         return d
 
     def to_json(self, indent: int = 2) -> str:
@@ -94,9 +110,23 @@ class RunRecord:
     @classmethod
     def from_dict(cls, data: dict) -> "RunRecord":
         """Deserialize from dictionary."""
-        # Convert list to tuple for immutability
+        # Convert lists to tuples for immutability
         if "pipeline_steps_executed" in data:
             data["pipeline_steps_executed"] = tuple(data["pipeline_steps_executed"])
+        if "step_timings" in data:
+            if isinstance(data["step_timings"], dict):
+                # Convert dict format {step: seconds} to tuple of pairs
+                data["step_timings"] = tuple(
+                    (k, v) if isinstance(v, (int, float)) else (k, v)
+                    for k, v in data["step_timings"].items()
+                )
+            elif isinstance(data["step_timings"], list):
+                data["step_timings"] = tuple(
+                    tuple(item) if isinstance(item, list) else item
+                    for item in data["step_timings"]
+                )
+            else:
+                data["step_timings"] = ()
         # Filter to only known fields (forward compatibility)
         known_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered = {k: v for k, v in data.items() if k in known_fields}
@@ -174,5 +204,26 @@ def validate_run_record(record: RunRecord) -> list[str]:
     for step in record.pipeline_steps_executed:
         if step not in valid_steps:
             issues.append(f"Unknown pipeline step: '{step}'. Valid: {valid_steps}")
+
+    # --- v2.1 field validation ---
+    valid_fail_categories = {"", "build", "environment", "code_quality", "human_decision",
+                             "security", "git", "feasibility", "runtime"}
+    if record.fail_category and record.fail_category not in valid_fail_categories:
+        issues.append(f"fail_category '{record.fail_category}' not in {valid_fail_categories}")
+
+    if record.tokens_input < 0:
+        issues.append(f"tokens_input cannot be negative: {record.tokens_input}")
+
+    if record.tokens_output < 0:
+        issues.append(f"tokens_output cannot be negative: {record.tokens_output}")
+
+    if record.cost_usd < 0.0:
+        issues.append(f"cost_usd cannot be negative: {record.cost_usd}")
+
+    if record.iteration_number < 0:
+        issues.append(f"iteration_number cannot be negative: {record.iteration_number}")
+
+    if record.is_recursive and not record.recursive_parent_id:
+        issues.append("is_recursive=True requires non-empty recursive_parent_id")
 
     return issues
