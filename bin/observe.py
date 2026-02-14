@@ -43,6 +43,7 @@ from lib.proposal_engine import (
     ProposalNotPending,
 )
 from lib.proposal_schema import ProposalStatus
+from lib.repo_filter import list_runs_by_repo, runs_by_repo_summary
 
 # Default Context Hub location (overridable via OBSERVER_HUB_PATH env var)
 DEFAULT_HUB_PATH = PROJECT_ROOT / "context_hub"
@@ -176,6 +177,7 @@ def cmd_record_fast(args):
         manual_intervention=args.manual or False,
         manual_intervention_reason=args.manual_reason or "",
         notes=args.notes or "",
+        repo_id=getattr(args, "repo_id", None) or "",
     )
 
     _save_record(hub, record)
@@ -185,7 +187,11 @@ def cmd_list(args):
     """List recent runs."""
     hub = get_hub()
     limit = args.limit or 10
-    runs = hub.list_runs(limit=limit)
+    repo_id_filter = getattr(args, "repo_id", None)
+    if repo_id_filter is not None:
+        runs = list_runs_by_repo(hub, repo_id_filter, limit=limit)
+    else:
+        runs = hub.list_runs(limit=limit)
 
     if not runs:
         print("No runs recorded yet.")
@@ -222,7 +228,11 @@ def cmd_metrics(args):
     """Show aggregated metrics."""
     hub = get_hub()
     limit = args.last or None
-    runs = hub.list_runs(limit=limit)
+    repo_id_filter = getattr(args, "repo_id", None)
+    if repo_id_filter is not None:
+        runs = list_runs_by_repo(hub, repo_id_filter, limit=limit)
+    else:
+        runs = hub.list_runs(limit=limit)
 
     if not runs:
         print("No runs recorded yet.")
@@ -574,6 +584,26 @@ def cmd_summary(args):
     print()
 
 
+def cmd_repos(args):
+    """Show per-repo run summary."""
+    hub = get_hub()
+    summary = runs_by_repo_summary(hub)
+
+    if not summary:
+        print("No runs recorded yet.")
+        return
+
+    print(f"{'REPO ID':<40} {'RUNS':>6}  {'LATEST'}")
+    print("-" * 70)
+    for rid, info in summary.items():
+        display = rid if rid else "(untagged)"
+        latest = info["latest"][:10] if info["latest"] else "-"
+        print(f"{display:<40} {info['count']:>6}  {latest}")
+
+    total = sum(v["count"] for v in summary.values())
+    print(f"\n{len(summary)} repo(s), {total} total runs")
+
+
 def cmd_proposals(args):
     """List all proposals."""
     hub = get_hub()
@@ -708,10 +738,12 @@ def main():
     fast.add_argument("--manual", action="store_true")
     fast.add_argument("--manual-reason", default="")
     fast.add_argument("--notes", default="")
+    fast.add_argument("--repo-id", default=None, help="Repo identifier (org/repo format)")
 
     # list
     ls = subparsers.add_parser("list", help="List recent runs")
     ls.add_argument("-n", "--limit", type=int, default=10)
+    ls.add_argument("--repo-id", default=None, help="Filter to specific repo")
 
     # show
     show = subparsers.add_parser("show", help="Show run details")
@@ -720,6 +752,7 @@ def main():
     # metrics
     met = subparsers.add_parser("metrics", help="Show aggregated metrics")
     met.add_argument("--last", type=int, help="Analyze last N runs only")
+    met.add_argument("--repo-id", default=None, help="Filter to specific repo")
 
     # export
     subparsers.add_parser("export", help="Export all runs as JSON")
@@ -757,6 +790,9 @@ def main():
     # summary
     subparsers.add_parser("summary", help="One-screen dashboard of Observer state")
 
+    # repos
+    subparsers.add_parser("repos", help="Show per-repo run summary")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -777,6 +813,7 @@ def main():
         "reject": cmd_reject,
         "proposals": cmd_proposals,
         "summary": cmd_summary,
+        "repos": cmd_repos,
     }
 
     commands[args.command](args)

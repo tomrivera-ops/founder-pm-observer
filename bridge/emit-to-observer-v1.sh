@@ -205,6 +205,19 @@ else
     echo "  No sidecar found (using standard fields only)"
 fi
 
+# ── Repo Identity ─────────────────────────────────────────────
+
+# REPO_ID can be set by the batch runner or caller.
+# If not set, auto-detect from artifact's target_repo field + git remote.
+if [[ -z "${REPO_ID:-}" ]]; then
+    TARGET_REPO=$(extract '.target_repo // ""')
+    if [[ -n "${TARGET_REPO}" && -d "${TARGET_REPO}" ]]; then
+        REPO_ID=$(git -C "${TARGET_REPO}" remote get-url origin 2>/dev/null \
+            | sed -E 's#^(https?://[^/]+/|git@[^:]+:)##; s/\.git$//' || echo "")
+    fi
+fi
+REPO_ID="${REPO_ID:-}"
+
 # ── Build & Execute CLI Command ───────────────────────────────
 
 CMD=(python3 "${RECORD_CLI}")
@@ -230,6 +243,9 @@ CMD+=(--notes "${NOTES}")
 
 # v2.1 flags (if sidecar was found)
 [[ -n "${V21_FLAGS}" ]] && CMD+=(${V21_FLAGS})
+
+# Repo identity
+[[ -n "${REPO_ID}" ]] && CMD+=(--repo-id "${REPO_ID}")
 
 echo "  Source ID: ${ARTIFACT_ID}"
 echo "  Status:    ${STATUS}"

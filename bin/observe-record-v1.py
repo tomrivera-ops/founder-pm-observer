@@ -57,6 +57,7 @@ def main():
     parser.add_argument("--is-recursive", action="store_true")
     parser.add_argument("--recursive-parent-id", default="")
     parser.add_argument("--iteration-number", type=int, default=0)
+    parser.add_argument("--repo-id", default="", help="Repo identifier (org/repo format)")
 
     args = parser.parse_args()
 
@@ -112,6 +113,7 @@ def main():
         is_recursive=args.is_recursive,
         recursive_parent_id=args.recursive_parent_id,
         iteration_number=args.iteration_number,
+        repo_id=args.repo_id,
     )
 
     issues = validate_run_record(record)

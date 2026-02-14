@@ -50,6 +50,7 @@ class RunRecord:
     # Identity
     run_id: str
     source: str = "founder-pm"
+    repo_id: str = ""  # "org/repo" format. Empty = untagged/legacy.
 
     # Input
     input_type: str = InputType.PRD.value
