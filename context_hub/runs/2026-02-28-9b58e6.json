@@ -1,0 +1,43 @@
+{
+  "run_id": "2026-02-28-9b58e6",
+  "source": "atlas-infra-agent",
+  "repo_id": "tomrivera-PSE/PSE--Projects",
+  "input_type": "HOTFIX",
+  "input_ref": "Infrastructure remediation: API routing, Docker SDK fix, SSH hardening docs",
+  "timestamp": "2026-02-28T23:45:29.946613+00:00",
+  "duration_minutes": 180.0,
+  "llm_model": "claude-opus-4-6",
+  "pipeline_steps_executed": [
+    "build",
+    "validation",
+    "ship"
+  ],
+  "build_success": true,
+  "tests_passed": 236,
+  "tests_failed": 0,
+  "lint_errors": 0,
+  "type_errors": 0,
+  "diff_size_lines": 500,
+  "files_created": 2,
+  "files_modified": 3,
+  "manual_intervention": true,
+  "manual_intervention_reason": "Infrastructure session — Atlas agent via SSH. No pm run pipeline. Manual approval at each step. User directed 7-step Linode hardening sequence.",
+  "notes": "Session scope: (1) Fixed api.payrollsynergyexperts.com returning SPA HTML instead of FastAPI — root cause was missing Nginx server block in pse.conf for port 80 A-record traffic. (2) Set PSE_API_KEYS in pse-api Docker container for API auth. (3) Upgraded anthropic SDK from 0.7.7 to 0.84.0 — old version predated messages API, Claude engine failed with 'Anthropic object has no attribute messages'. Hotfixed in-container then rebuilt image to bake fix. (4) Added ANTHROPIC_API_KEY to production .env enabling Claude AI engine. (5) Verified E2E CHAP query returning real Claude-powered compliance analysis. (6) Created SSH-INFRASTRUCTURE-RECAP.md documenting 5-issue root cause analysis. (7) Rewrote STARTUP.md to reflect current A-record + Nginx architecture. (8) Regenerated founder-pm QUICK-REFERENCE.md. Commits: 07e9d5c (setup-api-nginx.sh), ee24436 (post-SSH hardening), 8aaecae (anthropic SDK fix), e23e6e9 (docs update), e43cef7 (reference card).",
+  "model_provider": "anthropic",
+  "model_name": "claude-opus-4-6",
+  "tokens_input": 0,
+  "tokens_output": 0,
+  "cost_usd": 0.0,
+  "retry_count": 0,
+  "fail_category": "",
+  "fail_stage": "",
+  "input_content_hash": "",
+  "step_timings": [
+    ["build", 5400],
+    ["validation", 300],
+    ["ship", 600]
+  ],
+  "is_recursive": false,
+  "recursive_parent_id": "",
+  "iteration_number": 0
+}
