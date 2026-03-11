@@ -96,7 +96,15 @@ class VerdictEngine:
         }
 
     def _degraded_verdict(self, artifact_id: str, reason: str) -> dict:
-        """Return a safe pass verdict when sidecar data is unavailable."""
+        """Return a safe pass verdict when sidecar data is unavailable.
+
+        Degraded mode contract:
+          - verdict is always "pass" (fail-open: missing telemetry must not block builds)
+          - degraded is always True (callers can distinguish from genuine passes)
+          - degraded_reason contains a human-readable explanation
+          - All check/failure/hint lists are empty (no checks were evaluated)
+          - retry_eligible is always False (nothing to retry without data)
+        """
         return {
             "schema_version": "verdict.v1",
             "artifact_id": artifact_id,

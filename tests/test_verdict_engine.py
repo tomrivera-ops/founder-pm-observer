@@ -203,6 +203,16 @@ class TestDegradedMode:
         assert verdict["verdict"] == "pass"
         assert verdict["degraded"] is True
 
+    def test_partial_sidecar_missing_error_taxonomy(self, engine):
+        """Sidecar with quality but missing error_taxonomy triggers degraded mode."""
+        partial = {"quality": {"code_review": {"status": "PASS"}}}
+        verdict = engine.generate_verdict("test-001", partial)
+        assert verdict["verdict"] == "pass"
+        assert verdict["degraded"] is True
+        assert "error_taxonomy" in verdict["degraded_reason"]
+        assert verdict["check_results"] == []
+        assert verdict["retry_eligible"] is False
+
 
 class TestFixHints:
     def test_test_failure_hints(self, engine):
