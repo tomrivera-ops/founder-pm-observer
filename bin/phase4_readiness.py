@@ -166,6 +166,9 @@ def check_all(hub: ContextHub) -> list[dict]:
             "No low-risk proposals resolved yet",
         ))
 
+    # Approval rate variance check
+    results.append(_check_approval_rate_variance(proposals))
+
     # --- 4. System Stability ---
     if runs:
         metrics = compute_metrics(runs)
@@ -222,6 +225,9 @@ def check_all(hub: ContextHub) -> list[dict]:
         results.append(check("Build success rate", 0, 0.9, ">=", "No runs"))
         results.append(check("Manual intervention rate", 1, 0.15, "<=", "No runs"))
 
+    # Combined trend stability check
+    results.append(_check_trend_not_degrading(runs))
+
     # --- 5. Analysis Coverage ---
     results.append(check(
         "Analysis reports generated",
@@ -276,6 +282,80 @@ def check_all(hub: ContextHub) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
+
+def _check_approval_rate_variance(proposals: list[dict]) -> dict:
+    """Check that approval rate variance across risk levels is within threshold.
+
+    Computes per-risk-level approval rates and checks that the spread
+    (max - min) is <= max_approval_rate_variance. A low variance means
+    consistent decision-making across risk levels.
+    """
+    threshold = CRITERIA["max_approval_rate_variance"]
+    resolved = [p for p in proposals if p.get("status") in ("approved", "rejected")]
+
+    if len(resolved) < 3:
+        return check(
+            "Approval rate variance",
+            1.0, threshold, "<=",
+            f"Not enough resolved proposals ({len(resolved)}, need >=3)",
+        )
+
+    # Group by risk level
+    risk_groups = {}
+    for p in resolved:
+        risk = p.get("risk_assessment", p.get("impact_level", "unknown"))
+        risk_groups.setdefault(risk, []).append(p)
+
+    if len(risk_groups) < 2:
+        return check(
+            "Approval rate variance",
+            0.0, threshold, "<=",
+            f"Only 1 risk level seen — variance is 0",
+        )
+
+    rates = []
+    for risk, group in risk_groups.items():
+        approved_count = sum(1 for p in group if p.get("status") == "approved")
+        rates.append(approved_count / len(group))
+
+    variance = max(rates) - min(rates)
+    return check(
+        "Approval rate variance",
+        variance, threshold, "<=",
+        f"Variance {variance:.2f} across {len(risk_groups)} risk levels",
+        note=f"Target <= {threshold}",
+    )
+
+
+def _check_trend_not_degrading(runs: list) -> dict:
+    """Check that overall system trends are not degrading.
+
+    Splits runs into two halves (recent vs older) and uses compute_trends()
+    to verify neither duration nor reliability is degrading.
+    """
+    if len(runs) < 6:
+        return check(
+            "Overall trend stability",
+            0, 1, ">=",
+            f"Not enough runs for trend analysis ({len(runs)}, need >=6)",
+        )
+
+    mid = len(runs) // 2
+    recent = compute_metrics(runs[:mid])
+    older = compute_metrics(runs[mid:])
+    trends = compute_trends(recent, older)
+
+    duration_ok = trends.duration_trend != "degrading"
+    reliability_ok = trends.reliability_trend != "degrading"
+    both_ok = duration_ok and reliability_ok
+
+    return check(
+        "Overall trend stability",
+        1 if both_ok else 0,
+        1, ">=",
+        f"Duration: {trends.duration_trend}, Reliability: {trends.reliability_trend}",
+    )
+
 
 def check(name: str, actual, target, op: str, detail: str, note: str = "") -> dict:
     if op == ">=":
