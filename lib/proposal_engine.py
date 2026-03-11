@@ -150,7 +150,7 @@ def _rule_degrading_trend(finding: Finding, config: AnalysisConfig, params: dict
     )
 
 
-# All rules in evaluation order
+# All rules in evaluation order (legacy list, kept for backward compat)
 RULES = [
     _rule_slow_cycle_time,
     _rule_low_success_rate,
@@ -159,6 +159,16 @@ RULES = [
     _rule_high_manual_intervention,
     _rule_degrading_trend,
 ]
+
+# Rule registry — maps rule names to rule functions
+DEFAULT_RULE_REGISTRY = {
+    "slow_cycle_time": _rule_slow_cycle_time,
+    "low_success_rate": _rule_low_success_rate,
+    "high_lint": _rule_high_lint,
+    "high_type_errors": _rule_high_type_errors,
+    "high_manual_intervention": _rule_high_manual_intervention,
+    "degrading_trend": _rule_degrading_trend,
+}
 
 
 # ── Version Bumping ──────────────────────────────────────────────────
@@ -215,6 +225,18 @@ class ProposalEngine:
     def __init__(self, hub: ContextHub, config: Optional[AnalysisConfig] = None):
         self.hub = hub
         self.config = config or AnalysisConfig()
+        self._rule_registry = dict(DEFAULT_RULE_REGISTRY)
+
+    def register_rule(self, name: str, fn) -> None:
+        """Register a new rule function into the engine's rule registry."""
+        self._rule_registry[name] = fn
+        logger.info("Rule registered: %s", name)
+
+    def unregister_rule(self, name: str) -> None:
+        """Remove a rule from the engine's rule registry."""
+        if name in self._rule_registry:
+            del self._rule_registry[name]
+            logger.info("Rule unregistered: %s", name)
 
     def generate_proposal(
         self,
@@ -244,7 +266,7 @@ class ProposalEngine:
         seen_paths: set[str] = set()
 
         for finding in findings:
-            for rule in RULES:
+            for rule in self._rule_registry.values():
                 diff = rule(finding, self.config, params)
                 if diff and diff.path not in seen_paths:
                     diffs.append(diff)

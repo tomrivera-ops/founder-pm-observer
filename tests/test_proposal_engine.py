@@ -526,5 +526,55 @@ class TestEndToEnd:
         assert p2.proposal_id != p1.proposal_id
 
 
+class TestRuleRegistry:
+    """Tests for rule registry (OBS-003)."""
+
+    def test_registry_contains_default_rules(self, tmp_path):
+        """Engine initializes with all 6 default rules registered."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        engine = ProposalEngine(hub)
+        assert "slow_cycle_time" in engine._rule_registry
+        assert "low_success_rate" in engine._rule_registry
+        assert "high_lint" in engine._rule_registry
+        assert len(engine._rule_registry) == 6
+
+    def test_register_rule_adds_new_rule(self, tmp_path):
+        """register_rule() adds a custom rule to the registry."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        engine = ProposalEngine(hub)
+        custom_rule = lambda f, c, p: None
+        engine.register_rule("custom_check", custom_rule)
+        assert "custom_check" in engine._rule_registry
+        assert engine._rule_registry["custom_check"] is custom_rule
+        assert len(engine._rule_registry) == 7
+
+    def test_unregister_rule_removes_rule(self, tmp_path):
+        """unregister_rule() removes a rule from the registry."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        engine = ProposalEngine(hub)
+        engine.unregister_rule("high_lint")
+        assert "high_lint" not in engine._rule_registry
+        assert len(engine._rule_registry) == 5
+
+    def test_execution_loop_calls_registered_rules(self, tmp_path):
+        """generate_proposal() iterates over registry, not hardcoded RULES."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        engine = ProposalEngine(hub)
+
+        call_log = []
+
+        def tracking_rule(finding, config, params):
+            call_log.append(finding.category)
+            return None
+
+        # Replace all rules with our tracking rule
+        engine._rule_registry.clear()
+        engine.register_rule("tracker", tracking_rule)
+
+        findings = [Finding(Severity.WARNING, "test_cat", "test message")]
+        engine.generate_proposal(findings)
+        assert "test_cat" in call_log
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

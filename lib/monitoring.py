@@ -15,12 +15,16 @@ import logging
 import os
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 
 logger = logging.getLogger("observer.monitoring")
+
+# Retention policy: telemetry log entries older than this are eligible for purge.
+# Override with OBSERVER_LOG_RETENTION_DAYS environment variable.
+DEFAULT_RETENTION_DAYS = 90
 
 
 @dataclass
@@ -99,6 +103,58 @@ class AgentMonitor:
             return None
         successes = sum(1 for r in runs if r.success)
         return round(successes / len(runs), 4)
+
+    @property
+    def retention_days(self) -> int:
+        """Retention period in days. Configurable via OBSERVER_LOG_RETENTION_DAYS."""
+        env_val = os.environ.get("OBSERVER_LOG_RETENTION_DAYS")
+        if env_val:
+            try:
+                return int(env_val)
+            except ValueError:
+                pass
+        return DEFAULT_RETENTION_DAYS
+
+    def purge_old_logs(self) -> int:
+        """Remove log entries older than the retention period.
+
+        Returns the number of entries purged.
+        """
+        if not self.log_path.exists():
+            return 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
+        cutoff_iso = cutoff.isoformat()
+
+        kept = []
+        purged = 0
+
+        try:
+            with open(self.log_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        ts = data.get("timestamp", "")
+                        if ts and ts < cutoff_iso:
+                            purged += 1
+                        else:
+                            kept.append(line)
+                    except json.JSONDecodeError:
+                        kept.append(line)
+
+            if purged > 0:
+                with open(self.log_path, "w") as f:
+                    for line in kept:
+                        f.write(line + "\n")
+                logger.info("purged %d entries older than %d days", purged, self.retention_days)
+
+        except Exception as e:
+            logger.warning("Failed to purge old logs: %s", e)
+
+        return purged
 
 
 def create_monitor(hub_base_path: Path) -> AgentMonitor:

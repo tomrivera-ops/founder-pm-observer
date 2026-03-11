@@ -24,7 +24,7 @@ from lib.schema import RunRecord, current_timestamp
 from lib.context_hub import ContextHub
 from lib.metrics import compute_metrics, MetricsSummary
 from lib.analysis_config import AnalysisConfig
-from lib.analysis_agent import AnalysisAgent, AnalysisResult, Finding, Severity
+from lib.analysis_agent import AnalysisAgent, AnalysisResult, EmptyAnalysisReport, Finding, Severity
 from lib.monitoring import AgentMonitor, AgentRunLog, create_monitor
 
 
@@ -572,6 +572,43 @@ class TestSeverityAndFinding:
             message="Info message",
         )
         assert f.detail == ""
+
+
+class TestEmptyAnalysisReport:
+    """Tests for empty hub handling (OBS-004)."""
+
+    def test_empty_hub_returns_empty_report_not_none(self, tmp_path):
+        """When hub has zero runs, result.empty_report is EmptyAnalysisReport, not None."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        agent = AnalysisAgent(hub)
+        result = agent.run()
+        assert result.empty_report is not None
+        assert isinstance(result.empty_report, EmptyAnalysisReport)
+
+    def test_empty_report_has_correct_reason(self, tmp_path):
+        """EmptyAnalysisReport.reason describes why the report is empty."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        agent = AnalysisAgent(hub)
+        result = agent.run()
+        assert "No runs" in result.empty_report.reason
+        assert result.empty_report.run_count == 0
+
+    def test_downstream_handler_receives_empty_report(self, tmp_path):
+        """Downstream code can check empty_report field without error."""
+        hub = ContextHub(str(tmp_path / "hub"))
+        agent = AnalysisAgent(hub)
+        result = agent.run()
+
+        # Simulate downstream handler pattern
+        if result.empty_report is not None:
+            handled = True
+            reason = result.empty_report.reason
+        else:
+            handled = False
+            reason = ""
+
+        assert handled is True
+        assert len(reason) > 0
 
 
 if __name__ == "__main__":

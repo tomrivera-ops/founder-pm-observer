@@ -42,6 +42,7 @@ class AnalysisResult:
     duration_seconds: float = 0.0
     success: bool = False
     error: Optional[str] = None
+    empty_report: Optional["EmptyAnalysisReport"] = None
 
     @property
     def summary(self) -> str:
@@ -52,6 +53,19 @@ class AnalysisResult:
             f"{self.findings_count} findings, "
             f"report: {self.report_filename}"
         )
+
+
+@dataclass
+class EmptyAnalysisReport:
+    """Returned when Context Hub has zero runs.
+
+    Callers must handle this explicitly — it is NOT None and NOT
+    a regular AnalysisResult. This forces downstream code to
+    acknowledge the empty state rather than silently proceeding.
+    """
+    reason: str = "No runs found in Context Hub"
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    run_count: int = 0
 
 
 # ── Finding Classification ──────────────────────────────────────────
@@ -107,10 +121,12 @@ class AnalysisAgent:
             runs = self.hub.list_runs(limit=window * 2, newest_first=True)
 
             if not runs:
+                logger.info("analysis_agent: no runs in context hub")
                 result.success = True
                 result.runs_analyzed = 0
                 result.report_content = self._empty_report()
                 result.report_filename = self._write_report(result.report_content)
+                result.empty_report = EmptyAnalysisReport()
                 return result
 
             # Step 2: Split into current and previous windows
