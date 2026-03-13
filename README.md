@@ -2,9 +2,13 @@
 
 **Advisory Optimization System — Phase 3: Suggest**
 
-The Observer Plane is a parallel advisory system that watches Founder-PM executions, records outcome metrics, analyzes trends, and generates parameter change proposals for human approval.
+Faraday Capital Systems Holdings LLC
 
-It does not execute builds, modify prompts, or alter runtime behavior.
+The Observer Plane is a parallel advisory system that watches Founder-PM executions, records outcome metrics, analyzes trends, and generates parameter change proposals for human approval. It does not execute builds, modify prompts, or alter runtime behavior.
+
+```
+197 tests  |  12 lib modules  |  4 phases  |  zero external dependencies
+```
 
 ---
 
@@ -29,35 +33,53 @@ Founder-PM (Execution Plane)     Observer Plane (Advisory Only)
 ## Directory Structure
 
 ```
-founder-pm-observer/             # Sibling to founder-pm/ — never inside it
+founder-pm-observer/                # Sibling to founder-pm/ — never inside it
 ├── bin/
-│   ├── observe.py               # CLI tool (primary interface)
-│   └── seed_data.py             # Sample data generator
+│   ├── observe.py                  # Main CLI (primary interface)
+│   ├── observe-verdict.py          # Verdict generator for recursive runner
+│   ├── observe-record-v1.py        # Record command v1
+│   ├── phase4_readiness.py         # Phase 4 graduation checker
+│   └── seed_data.py                # Sample data generator
 ├── bridge/
-│   ├── emit-to-observer.sh      # Post-hook: artifact → Observer
-│   └── MAKEFILE_SNIPPET.mk      # Append to founder-pm Makefile
+│   ├── emit-to-observer.sh         # Post-hook: artifact → Observer
+│   ├── emit-to-observer-v1.sh      # Bridge v1 (used by founder-pm)
+│   └── MAKEFILE_SNIPPET.mk         # Append to founder-pm Makefile
 ├── lib/
 │   ├── __init__.py
-│   ├── schema.py                # Run record contract + validation
-│   ├── context_hub.py           # Storage layer (append-only)
-│   ├── metrics.py               # Aggregation + trends
-│   ├── analysis_agent.py        # Analysis agent (Phase 2)
-│   ├── analysis_config.py       # Agent configuration
-│   ├── monitoring.py            # Agent performance monitoring
-│   ├── proposal_schema.py       # Proposal contract (Phase 3)
-│   └── proposal_engine.py       # Rule-based proposal engine (Phase 3)
-├── tests/
-│   ├── test_phase1.py           # 33 tests (Phase 1)
-│   ├── test_analysis_agent.py   # 36 tests (Phase 2)
-│   ├── test_proposal_engine.py  # 28 tests (Phase 3)
-│   └── test_approval_gate.py    # 26 tests (Phase 3)
-├── context_hub/
-│   ├── runs/                    # Immutable run records (JSON)
-│   ├── metrics/                 # Aggregated snapshots
-│   ├── analysis/                # Markdown reports (Phase 2)
-│   ├── proposals/               # Parameter change proposals (Phase 3)
-│   └── parameters/              # Versioned configs
+│   ├── schema.py                   # Run record contract (frozen dataclass)
+│   ├── context_hub.py              # Append-only storage layer
+│   ├── metrics.py                  # Aggregation & trend computation
+│   ├── metrics_persistence.py      # Metrics snapshot writer
+│   ├── analysis_agent.py           # Phase 2: deterministic analysis agent
+│   ├── analysis_config.py          # Agent configuration loader
+│   ├── monitoring.py               # Agent performance monitoring
+│   ├── proposal_engine.py          # Phase 3: rule-based proposal engine
+│   ├── proposal_schema.py          # Proposal contract & versioning
+│   ├── verdict_engine.py           # Verdict generation from sidecar data
+│   └── repo_filter.py              # Multi-repo filtering
+├── tests/                          # 197 tests across 11 files
+│   ├── test_phase1.py              # Schema, hub, metrics (33 tests)
+│   ├── test_analysis_agent.py      # Analysis agent (36 tests)
+│   ├── test_proposal_engine.py     # Proposals (28 tests)
+│   ├── test_approval_gate.py       # Approval flow (26 tests)
+│   ├── test_verdict_engine.py      # Verdict generation
+│   ├── test_monitoring.py          # Agent monitoring
+│   ├── test_context_hub.py         # Storage layer
+│   ├── test_metrics_persistence.py # Metrics snapshots
+│   ├── test_repo_filter.py         # Repo filtering
+│   ├── test_schema_extensions.py   # Schema backward compat
+│   └── test_phase4_readiness.py    # Graduation criteria
+├── context_hub/                    # Persistent data store
+│   ├── runs/                       # Immutable run records (JSON)
+│   ├── metrics/                    # Aggregated snapshots
+│   ├── analysis/                   # Markdown reports
+│   ├── proposals/                  # Parameter change proposals
+│   ├── parameters/                 # Versioned configs (v0.1.0 → v0.5.0)
+│   └── verdicts/                   # Verdict files from sidecar data
 └── docs/
+    ├── OBSERVER-INTEGRATION.md     # Integration guide
+    ├── PHASE3-PROTOCOL.md          # Phase 3 operating protocol
+    └── observer_agent_integration.md  # Analysis agent guide
 ```
 
 ---
@@ -66,25 +88,25 @@ founder-pm-observer/             # Sibling to founder-pm/ — never inside it
 
 ```bash
 # 1. Initialize (idempotent)
-python bin/observe.py init
+python3 bin/observe.py init
 
 # 2. Seed sample data (optional)
-python bin/seed_data.py
+python3 bin/seed_data.py
 
 # 3. View runs
-python bin/observe.py list
+python3 bin/observe.py list
 
 # 4. View metrics
-python bin/observe.py metrics
+python3 bin/observe.py metrics
 
 # 5. Show a specific run
-python bin/observe.py show <run-id>
+python3 bin/observe.py show <run-id>
 
 # 6. Record a new run (interactive)
-python bin/observe.py record
+python3 bin/observe.py record
 
 # 7. Record a new run (fast, CLI args)
-python bin/observe.py record-fast \
+python3 bin/observe.py record-fast \
   --type PRD \
   --ref my-feature-prd.md \
   --model claude-4.6 \
@@ -94,73 +116,63 @@ python bin/observe.py record-fast \
   --diff 200
 
 # 8. Run analysis agent (Phase 2)
-python bin/observe.py analyze
-python bin/observe.py analyze --print          # print report to stdout
-python bin/observe.py analyze --window 20      # custom window size
+python3 bin/observe.py analyze
+python3 bin/observe.py analyze --print          # Print report to stdout
+python3 bin/observe.py analyze --window 20      # Custom window size
 
 # 9. Generate a parameter change proposal (Phase 3)
-python bin/observe.py propose
-python bin/observe.py propose --window 20      # custom window size
+python3 bin/observe.py propose
+python3 bin/observe.py propose --window 20      # Custom window size
 
 # 10. Approve or reject a proposal (Phase 3)
-python bin/observe.py approve <proposal-id>
-python bin/observe.py approve <proposal-id> --by tom
-python bin/observe.py reject <proposal-id> --reason "Not appropriate now"
+python3 bin/observe.py approve <proposal-id>
+python3 bin/observe.py approve <proposal-id> --by tom
+python3 bin/observe.py reject <proposal-id> --reason "Not appropriate now"
 
 # 11. List all proposals
-python bin/observe.py proposals
+python3 bin/observe.py proposals
 
 # 12. Export all runs as JSON
-python bin/observe.py export
+python3 bin/observe.py export
 ```
 
 ---
 
 ## Integration with Founder-PM
 
-The bridge script reads founder-pm artifacts and emits Observer run records. **Zero changes to founder-pm source code.**
+The bridge script reads founder-pm artifacts and emits Observer run records. **Zero changes to founder-pm source code required.**
 
-### Setup (two steps)
+### Setup
 
-1. Place `founder-pm-observer/` as a sibling to `founder-pm/`:
-   ```
-   your-workspace/
-   ├── founder-pm/           # EXISTING — UNTOUCHED
-   └── founder-pm-observer/  # NEW
-   ```
+Place `founder-pm-observer/` as a sibling to `founder-pm/`, or set the `OBSERVER_PATH` environment variable.
 
-2. Append `bridge/MAKEFILE_SNIPPET.mk` to your `founder-pm/Makefile`:
-   ```makefile
-   # --- Observer Plane Integration (optional, non-blocking) ---
-   OBSERVER_BRIDGE := ../founder-pm-observer/bridge/emit-to-observer.sh
+Founder-PM resolves the Observer location via a 3-tier fallback:
+1. `OBSERVER_PATH` env var (explicit override)
+2. Sibling directory named `founder-pm-observer`
+3. `~/projects/founder-pm-observer` (canonical default)
 
-   .PHONY: observe
-   observe:
-       @if [ -x "$(OBSERVER_BRIDGE)" ]; then $(OBSERVER_BRIDGE); \
-       else echo "Observer Plane not installed. Skipping."; fi
-   ```
+### Bridge Protocol
 
-### Usage
+The bridge script (`emit-to-observer-v1.sh`) is invoked by Founder-PM's `lib/observer_bridge.py` after each run:
 
-```bash
-# After any build — emit the latest artifact
-make observe
-
-# Or emit a specific artifact
-../founder-pm-observer/bridge/emit-to-observer.sh artifacts/20260207-153000-abc123.json
-
-# Optional: chain after your ship target
-# ship: build test lint _ship observe
+```
+Founder-PM Run Complete
+       ↓
+observer_bridge.py invokes emit-to-observer-v1.sh
+       ↓
+Bridge reads artifact JSON → maps fields → calls observe record-fast
+       ↓
+Observer writes immutable run record to context_hub/runs/
 ```
 
-### Field Mapping (founder-pm -> Observer)
+### Field Mapping (founder-pm artifact -> Observer run record)
 
 | Founder-PM Artifact | Observer Run Record | Notes |
 |---|---|---|
 | `.target` | `input_type` | `pse`/`build` -> PRD, `bugfix` -> BUGFIX |
 | `.description` | `input_ref` | Direct pass-through |
 | `.status` | `build_success` | `complete` -> true, else false |
-| `.steps_completed[]` | `pipeline_steps_executed` | `build_success` -> `build`, `commit_success` -> `ship` |
+| `.steps_completed[]` | `pipeline_steps_executed` | Mapped step names |
 | `.created_at` -> log mtime | `duration_minutes` | Computed from timestamps |
 | `.validation.results.pytest.passed` | `tests_passed` | Direct |
 | `.validation.results.pytest.failed` | `tests_failed` | Direct |
@@ -184,7 +196,7 @@ For fields not in the artifact, you can pass overrides:
 ```bash
 LLM_MODEL_OVERRIDE=claude-4.6 \
 DIFF_LINES_OVERRIDE=350 \
-  make observe
+  ../founder-pm-observer/bridge/emit-to-observer-v1.sh
 ```
 
 ---
@@ -223,13 +235,13 @@ The sole coupling point between Founder-PM and the Observer Plane:
 
 ## Analysis Agent (Phase 2)
 
-The analysis agent is a read-only agent that examines run history from the Context Hub, computes metrics, compares against configured targets, and produces markdown reports.
+The analysis agent is a read-only, deterministic agent that examines run history, computes metrics, and produces markdown reports. No LLM calls — same input always produces the same output.
 
 ### How It Works
 
 1. Loads the most recent runs from the Context Hub (window size configurable)
 2. Splits runs into current and previous windows for trend comparison
-3. Computes aggregated metrics (success rate, cycle time, hygiene, etc.)
+3. Computes aggregated metrics (success rate, cycle time, hygiene)
 4. Compares metrics against targets from the parameter config
 5. Generates findings classified by severity: critical, warning, info
 6. Writes a markdown report to `context_hub/analysis/`
@@ -249,27 +261,11 @@ The agent reads targets from `context_hub/parameters/`. Key settings:
 | `target_max_lint_errors` | 5 | `targets.max_lint_errors_per_run` |
 | `target_max_type_errors` | 0 | `targets.max_type_errors_per_run` |
 
-### Design Principles
-
-- **Read-only**: never modifies run records or parameters
-- **Deterministic**: same input produces same output (no LLM calls)
-- **Observable**: every run is logged with timing and outcome
-- **Safe**: failures are caught and logged, never block execution
-
 ---
 
 ## Proposal Engine (Phase 3)
 
-The proposal engine is a rule-based system that converts analysis findings into parameter change proposals. Proposals require explicit human approval before being applied.
-
-### How It Works
-
-1. Runs the analysis agent to detect findings (metrics vs targets)
-2. Applies deterministic rules to map findings to parameter adjustments
-3. Computes impact level (low/medium/high) and version bump
-4. Writes a proposal to `context_hub/proposals/`
-5. Waits for explicit `approve` or `reject` via CLI
-6. On approval: writes a new versioned parameter config to `context_hub/parameters/`
+The proposal engine converts analysis findings into parameter change proposals via deterministic rules. All proposals require explicit human approval.
 
 ### Rules
 
@@ -299,7 +295,7 @@ The proposal engine is a rule-based system that converts analysis findings into 
 
 ```bash
 # 1. Generate proposal from current analysis
-python bin/observe.py propose
+python3 bin/observe.py propose
 
 # Output:
 # Proposal generated: prop-20260209-003327-d67d89
@@ -310,11 +306,90 @@ python bin/observe.py propose
 #     targets.manual_intervention_rate: 0.1 -> 0.15
 
 # 2. Review and approve
-python bin/observe.py approve prop-20260209-003327-d67d89
+python3 bin/observe.py approve prop-20260209-003327-d67d89
 
 # 3. Or reject with reason
-python bin/observe.py reject prop-20260209-003327-d67d89 --reason "Wait for more data"
+python3 bin/observe.py reject prop-20260209-003327-d67d89 --reason "Wait for more data"
 ```
+
+---
+
+## Verdict Engine
+
+The verdict engine generates pass/fail/warn verdicts from Founder-PM sidecar telemetry, consumed by the recursive runner for retry decisions.
+
+### Checks
+
+| Check | Severity | Retry Eligible |
+|-------|----------|----------------|
+| `build_success` | blocking | yes |
+| `tests_passing` | blocking | yes |
+| `lint_clean` | advisory | no |
+| `type_clean` | advisory | no |
+| `arch_p0_clear` | blocking | yes |
+| `code_review_clear` | advisory | no |
+| `secrets_clean` | blocking | no |
+
+### Verdict Invocation
+
+```bash
+python3 bin/observe-verdict.py \
+  --artifact-id <id> \
+  --sidecar-path founder-pm/artifacts/<id>.run.v1.json
+```
+
+### Degraded Mode
+
+When the Observer is unavailable, Founder-PM falls back to `lib/verdict_fallback.py` — a lightweight verdict that only checks `build_success` and `tests_passing`, always with `degraded=True`.
+
+---
+
+## Phase 4 Readiness
+
+Check graduation criteria for Phase 4 (confidence-gated auto-apply):
+
+```bash
+python3 bin/phase4_readiness.py          # Human-readable report
+python3 bin/phase4_readiness.py --json   # Machine-readable output
+```
+
+**Graduation Criteria (12 checks):**
+1. 20+ total runs recorded (15+ real, non-seed)
+2. 10+ proposals generated
+3. 8+ proposals resolved (approved or rejected)
+4. 5+ proposals approved
+5. 3+ low-risk proposals approved
+6. Low-risk approval rate >= 80%
+7. Build success rate >= 90%
+8. Manual intervention rate <= 15%
+9. Duration and reliability trends not degrading
+10. 5+ analysis reports generated
+11. Zero pending (unresolved) proposals
+12. 14+ days since first proposal
+
+---
+
+## Design Principles
+
+- **One-way dependency** — Founder-PM -> Observer, never reverse
+- **Immutability** — run records are frozen after write (`@dataclass(frozen=True)`)
+- **Append-only** — no updates, only additions; `RecordExistsError` on overwrite
+- **Fail-open** — Observer failures never block founder-pm
+- **Deterministic** — no LLM calls in analysis or proposals (repeatable results)
+- **Observable** — all agent runs logged with timing and outcomes
+- **Versioned parameters** — every config change creates a new version
+- **Human-in-loop** — Phase 3 requires explicit approval (no auto-apply until Phase 4)
+- **Zero external dependencies** — Python stdlib only (no pip packages required)
+
+---
+
+## Dependencies
+
+**Runtime:** Python standard library only. No external packages.
+
+**System (for bridge):** `bash`, `jq`, `python3`
+
+**Development:** `pytest` (for tests only)
 
 ---
 
@@ -326,7 +401,7 @@ cd founder-pm-observer
 pytest tests/ -v
 ```
 
-123 tests across 4 test files covering: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, trend computation, analysis agent execution, finding generation, report format, agent monitoring, proposal schema, rule matching, version bumping, impact computation, approval gate, rejection flow, and one-pending enforcement.
+197 tests across 11 files covering: schema immutability, serialization roundtrips, validation rules, Context Hub CRUD, append-only enforcement, metrics aggregation, trend computation, analysis agent execution, finding generation, report format, agent monitoring, proposal schema, rule matching, version bumping, impact computation, approval gate, rejection flow, one-pending enforcement, verdict generation, and Phase 4 readiness.
 
 ---
 
@@ -338,6 +413,30 @@ pytest tests/ -v
 | **2 — Analyze** | Complete | Read-only analysis agent, markdown reports, monitoring |
 | **3 — Suggest** | Complete | Parameter proposals, approval gate, rule engine |
 | **4 — Automate** | Future | Confidence-gated auto-apply, rollback |
+
+---
+
+## Three-System Architecture
+
+The Observer is one of three interconnected systems in the Faraday Capital development workflow:
+
+```
+              Founder-PM (Execution)
+              ├── 10-step pipeline
+              ├── portfolio queue
+              └── recursive runner
+                    │
+         ┌──────────┼──────────┐
+         ▼                     ▼
+    Observer (Advisory)   Adversary (Security)
+    ├── metrics            ├── intruder pass
+    ├── analysis           ├── governed pass
+    ├── proposals          └── signal-only hook
+    └── verdicts               in founder-pm
+```
+
+- [Founder-PM](https://github.com/faraday-build/founder-pm) — orchestration engine
+- [Adversary](https://github.com/faraday-build/adversary) — adversarial security analysis
 
 ---
 
